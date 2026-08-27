@@ -15,10 +15,15 @@ import (
 	"syscall"
 	"time"
 	_ "modernc.org/sqlite"
+	"html/template"
+	"github.com/Bicente44/life_notes/notes"
 )
 
 //go:embed static
 var staticFS embed.FS
+
+//go:embed templates
+var templatesFS embed.FS
 
 const (
 	addr = ":42069"
@@ -51,6 +56,11 @@ func run() error {
 		return fmt.Errorf("init db: %w", err)
 	}
 
+	templates, err := parseTemplates()
+	if err != nil {
+		return fmt.Errorf("parse templates: %w", err)
+	}
+
 	staticSub, err := fs.Sub(staticFS, "static")
 	if err != nil {
 		return fmt.Errorf("static subtree: %w", err)
@@ -60,20 +70,16 @@ func run() error {
 	mux := http.NewServeMux()
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(staticSub)))
 	
+	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
+		data := struct{ Title string }{Title: "Home"}
+		if err := templates["home"].ExecuteTemplate(w, "base", data); err != nil {
+			log.Printf("home template failed: %v", err)
+		}
+	})
 
-	// The URL endpoints live in each respective section
-	// Add each section when they are implemented
-	/*sections := []section.Section{
-		car.New(db, tpl),
-		//finance.New(db, tpl),
-	}
-
-	home := section.NewHome(sections, tpl)
-	mux.HandleFunc("GET /{$}", home.Index)
-
-	for _, s := range sections {
-		s.Register(mux)
-	}*/
+	// Setup all the handlers for each note
+	carHandlers := notes.NewCarHandlers(db, templates["car"])
+	carHandlers.Register(mux)
 
 	// Configure HTTP server
 	server := &http.Server{
@@ -247,4 +253,18 @@ func initDB(ctx context.Context, db *sql.DB) error {
 		log.Println("Inserted a default car because the table was empty.")
 	}
 	return nil
+}
+
+func parseTemplates() (map[string]*template.Template, error) {
+	pages := []string{ "home", "car" }
+	templates := make(map[string]*template.Template)
+
+	for _, name := range pages {
+		ts, err := template.ParseFS(templatesFS, "templates/base.gohtml", "templates/"+name+".gohtml")
+		if err != nil {
+			return nil, err
+		}
+		templates[name] = ts
+	}
+	return templates, nil
 }

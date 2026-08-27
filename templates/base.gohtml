@@ -1,0 +1,13 @@
+{{define "base"}}
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{.Title}} - life_notes</title>
+    <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+    <nav><a href="/">Home</a> <a href="/car">Car</a></nav>
+    <main>{{template "content" .}}</main>
+</body>
+</html>
+{{end}}
