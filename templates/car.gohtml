@@ -1,5 +1,50 @@
 {{define "content"}}
+<h1>{{.Car.Year}} {{.Car.Make}} {{.Car.Model}}</h1>
 
-<h1>Car page</h1>
-<p>{{.Title}} page</p>
+<section>
+  <h2>Details</h2>
+  <dl>
+    <dt>Trim</dt><dd>{{.Car.Trim}}</dd>
+    <dt>Color</dt><dd>{{.Car.Color}}</dd>
+    <dt>VIN</dt><dd>{{.Car.Vin}}</dd>
+    <dt>Plate</dt><dd>{{.Car.LicensePlate}}</dd>
+    <dt>Oil type</dt><dd>{{.Car.OilType}}</dd>
+    <dt>Oil capacity</dt><dd>{{.Car.OilCapacityL}} L</dd>
+    <dt>Insurance</dt><dd>{{.Car.InsuranceProvider}} ({{.Car.InsurancePolicyNumber}})</dd>
+    <dt>Insurance expires</dt><dd>{{.Car.InsuranceExp}}</dd>
+    <dt>Registration expires</dt><dd>{{.Car.RegistrationExp}}</dd>
+    <dt>Notes</dt><dd>{{.Car.Notes}}</dd>
+  </dl>
+</section>
+
+<section>
+  <h2>Edit</h2>
+  <form action="/car" method="post">
+    <input type="hidden" name="id" value="{{.Car.ID}}">
+
+    <label>Make <input name="make" value="{{.Car.Make}}"></label>
+    <label>Model <input name="model" value="{{.Car.Model}}"></label>
+    <label>Year <input name="year" type="number" value="{{.Car.Year}}"></label>
+    <label>Trim <input name="trim" value="{{.Car.Trim}}"></label>
+    <label>VIN <input name="vin" value="{{.Car.Vin}}"></label>
+    <label>Plate <input name="license_plate" value="{{.Car.LicensePlate}}"></label>
+    <label>Color <input name="color" value="{{.Car.Color}}"></label>
+
+    <label>Purchase date <input name="purchase_date" type="date" value="{{.Car.PurchaseDate}}"></label>
+    <label>Purchase price (cents) <input name="purchase_price_cents" type="number" value="{{.Car.PurchasePriceCents}}"></label>
+    <label>Purchase odometer <input name="purchase_odometer" type="number" value="{{.Car.PurchaseOdometer}}"></label>
+
+    <label>Oil type <input name="oil_type" value="{{.Car.OilType}}"></label>
+    <label>Oil capacity (L) <input name="oil_capacity_l" type="number" step="0.1" value="{{.Car.OilCapacityL}}"></label>
+
+    <label>Insurance provider <input name="insurance_provider" value="{{.Car.InsuranceProvider}}"></label>
+    <label>Policy number <input name="insurance_policy_number" value="{{.Car.InsurancePolicyNumber}}"></label>
+    <label>Insurance expires <input name="insurance_expires" type="date" value="{{.Car.InsuranceExp}}"></label>
+    <label>Registration expires <input name="registration_expires" type="date" value="{{.Car.RegistrationExp}}"></label>
+
+    <label>Notes <textarea name="notes">{{.Car.Notes}}</textarea></label>
+
+    <button type="submit">Save</button>
+  </form>
+</section>
 {{end}}
