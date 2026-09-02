@@ -15,6 +15,12 @@ type CarHandlers struct {
 	tpl *template.Template
 }
 
+type carPage struct {
+	Title string
+	Car	Car
+	// Error
+}
+
 type Car struct {
 	ID int
 	Make string
@@ -38,9 +44,16 @@ type Car struct {
 	CreatedAt string
 }
 
-type carPage struct {
-	Title string
-	Car	Car
+type ServiceLog struct {
+		ID int
+		CarID int
+		ServiceType string
+		Date string
+		Odometer int
+		CostCents int
+		Vendor string
+		Notes string
+		CreatedAt string
 }
 
 func NewCarHandlers(db *sql.DB, tpl *template.Template) *CarHandlers {
@@ -50,6 +63,8 @@ func NewCarHandlers(db *sql.DB, tpl *template.Template) *CarHandlers {
 func (h *CarHandlers) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /car", h.Index)
 	mux.HandleFunc("POST /car", h.Update) // Updates the car details
+	//mux.HandleFunc("GET /car/service", h.ServiceIndex)
+	mux.HandleFunc("POST /car/service", h.CreateService)
 }
 
 func (h *CarHandlers) Index(w http.ResponseWriter, r *http.Request) {
@@ -183,7 +198,87 @@ func (h *CarHandlers) updateCar(ctx context.Context, car Car) error {
 	return err
 }
 
-// Helpers
+func (h *CarHandlers) saveService(ctx context.Context, service ServiceLog) error {
+	if service.ID == 0 { 
+		query := `
+			INSERT INTO service_log 
+			(car_id, service_type, date, odometer, cost_cents, vendor, notes, created_at) 
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		`
+		_, err := h.db.ExecContext(ctx, query,
+			service.CarID, service.ServiceType, service.Date, service.Odometer, service.CostCents, 
+			service.Vendor, service.Notes, time.Now().Format(time.RFC3339),
+		)
+		return err
+	} else {
+		query := `
+			UPDATE service_log 
+			SET car_id = ?, service_type = ?, date = ?, odometer = ?, 
+			    cost_cents = ?, vendor = ?, notes = ?
+			WHERE id = ?
+		`
+		_, err := h.db.ExecContext(ctx, query,
+			service.CarID, service.ServiceType, service.Date, service.Odometer, service.CostCents, 
+			service.Vendor, service.Notes, service.ID,
+		)
+		return err
+	}
+}
+
+func (h *CarHandlers) CreateService(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		return
+	}
+	/* TODO Only one car right now, implement later
+	carID, err := formInt(r, "car_id")
+	if err != nil {
+		http.Error(w, "Invalid car ID", http.StatusBadRequest)
+		return
+	}*/
+	odometer, err := formInt(r, "odometer")
+	if err != nil {
+		http.Error(w, "Invalid odometer", http.StatusBadRequest)
+		return
+	}
+	costCents, err := formInt(r, "cost_cents")
+	if err != nil {
+		http.Error(w, "Invalid cost cents format", http.StatusBadRequest)
+		return
+	}
+	serviceLog := ServiceLog {
+		CarID: 1, // TODO: Implement way for multiple cars
+		ServiceType: r.FormValue("service_type"),
+		Date: r.FormValue("date"),
+		Odometer: odometer,
+		CostCents: costCents,
+		Vendor: r.FormValue("vendor"),
+		Notes: r.FormValue("notes"),
+	}
+	if err := h.saveService(r.Context(), serviceLog); err != nil {
+		log.Printf("save service: %v", err)
+		http.Error(w, "Failed to create service in database", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/car/service", http.StatusSeeOther)
+}
+
+// Claculations and Helpers
+func (h *CarHandlers) getOdometer(ctx context.Context, carId int) (int, error) {
+	var odometer int
+	query := `
+			SELECT COALESCE(MAX(odometer), 0) FROM (
+			  SELECT odometer FROM service_log WHERE car_id = ?
+			  UNION ALL SELECT odometer FROM fuel_log WHERE car_id = ?
+			  UNION ALL SELECT odometer FROM odometer_reading WHERE car_id = ?
+			)
+		`
+	err := h.db.QueryRowContext(ctx, query, carId, carId, carId).Scan(&odometer)
+	if err != nil {
+		return 0, err
+	}
+	return odometer, err
+}
 // Parse integers from form data
 func formInt(r *http.Request, name string) (int, error) {
 	v := r.FormValue(name)
