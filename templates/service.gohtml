@@ -1,0 +1,52 @@
+{{define "content"}}
+<h1>{{.Title}}</h1>
+
+<section>
+  <h2>Log a service</h2>
+  <form action="/car/service" method="post">
+    <label>Type
+      <select name="service_type" required>
+        <option value="oil">Oil change</option>
+        <option value="tire_rotation">Tire rotation</option>
+        <option value="brakes">Brakes</option>
+        <option value="inspection">Inspection</option>
+        <option value="other">Other</option>
+      </select>
+    </label>
+    <label>Date <input name="date" type="date" required></label>
+    <label>Odometer <input name="odometer" type="number" required></label>
+    <label>Cost (cents) <input name="cost_cents" type="number"></label>
+    <label>Vendor <input name="vendor"></label>
+    <label>Notes <textarea name="notes"></textarea></label>
+    <button type="submit">Add</button>
+  </form>
+</section>
+
+<section>
+  <h2>History</h2>
+  {{if .Services}}
+  <table>
+    <thead>
+      <tr>
+        <th>Date</th><th>Type</th><th>Odometer</th>
+        <th>Cost</th><th>Vendor</th><th>Notes</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Services}}
+      <tr>
+        <td>{{.Date}}</td>
+        <td>{{.ServiceType}}</td>
+        <td>{{.Odometer}} km</td>
+        <td>{{.CostCents}}</td>
+        <td>{{.Vendor}}</td>
+        <td>{{.Notes}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{else}}
+  <p>No services logged yet.</p>
+  {{end}}
+</section>
+{{end}}

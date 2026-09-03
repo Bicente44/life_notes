@@ -78,7 +78,7 @@ func run() error {
 	})
 
 	// Setup all the handlers for each note
-	carHandlers := notes.NewCarHandlers(db, templates["car"])
+	carHandlers := notes.NewCarHandlers(db, templates)
 	carHandlers.Register(mux)
 
 	// Configure HTTP server
@@ -256,7 +256,7 @@ func initDB(ctx context.Context, db *sql.DB) error {
 }
 
 func parseTemplates() (map[string]*template.Template, error) {
-	pages := []string{ "home", "car" }
+	pages := []string{ "home", "car", "service" }
 	templates := make(map[string]*template.Template)
 
 	for _, name := range pages {

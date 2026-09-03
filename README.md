@@ -31,7 +31,12 @@ essentially and fills the template's data holes.
 - Implement the rest of car
     - Design UI
     - Implement the rest of the functionality interacting with all car tables in DB
-        - Such as Servicing the car, Gas filling, Parts management, more?
+        - Such as Gas filling, Parts management, more?
+    - Proper error handling, pass an error on page struct
+    - Summary of costs
+    - Auto convert from frontend dollar to cent to make it less complicated
+    - Auto fill values or at least show what the previous one was
+
 - Implement other notes
     - Finance (spending, debts & payroll)
     - Possible course notes? (i write on paper usually so maybe write & store images?)

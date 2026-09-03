@@ -12,12 +12,18 @@ import (
 
 type CarHandlers struct {
 	db  *sql.DB
-	tpl *template.Template
+	tpls map[string]*template.Template
 }
 
 type carPage struct {
 	Title string
 	Car	Car
+	// Error
+}
+
+type servicePage struct {
+	Title string
+	Services []ServiceLog
 	// Error
 }
 
@@ -56,15 +62,15 @@ type ServiceLog struct {
 		CreatedAt string
 }
 
-func NewCarHandlers(db *sql.DB, tpl *template.Template) *CarHandlers {
-	return &CarHandlers{db: db, tpl: tpl}
+func NewCarHandlers(db *sql.DB, tpls map[string]*template.Template) *CarHandlers {
+	return &CarHandlers{db: db, tpls: tpls}
 }
 
 func (h *CarHandlers) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /car", h.Index)
 	mux.HandleFunc("POST /car", h.Update) // Updates the car details
-	//mux.HandleFunc("GET /car/service", h.ServiceIndex)
-	mux.HandleFunc("POST /car/service", h.CreateService)
+	mux.HandleFunc("GET /car/service", h.ServiceIndex) // List all services from a car
+	mux.HandleFunc("POST /car/service", h.CreateService) // Create/Edit a service
 }
 
 func (h *CarHandlers) Index(w http.ResponseWriter, r *http.Request) {
@@ -75,9 +81,56 @@ func (h *CarHandlers) Index(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data := carPage{ Title: "Car", Car: car }
-	if err := h.tpl.ExecuteTemplate(w, "base", data); err != nil {
+	if err := h.tpls["car"].ExecuteTemplate(w, "base", data); err != nil {
 		log.Printf("car template execution failed: %v", err)
 	}
+}
+
+func (h *CarHandlers) ServiceIndex(w http.ResponseWriter, r *http.Request) {
+	serviceLogs, err := h.listServices(r.Context())
+	if err != nil {
+		log.Printf("get services: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	data := servicePage{ Title: "Services", Services: serviceLogs }
+	if err := h.tpls["service"].ExecuteTemplate(w, "base", data); err != nil {
+		log.Printf("service template execution failed: %v", err)
+	}
+}
+
+func (h *CarHandlers) listServices(ctx context.Context) ([]ServiceLog, error) {
+	var serviceLog []ServiceLog
+	id := 1	// In the future make this as a param in getCar function (only one car right now)
+	query := `
+		SELECT
+			id, service_type, date, odometer, COALESCE(cost_cents, 0), COALESCE(vendor, ''),
+			COALESCE(notes, ''), created_at
+		FROM service_log
+		WHERE car_id = ?
+		ORDER BY date DESC, id DESC
+	`
+	rows, err := h.db.QueryContext(ctx, query, id)
+	if err != nil {
+		log.Printf("List service db execution failed: %v", err)
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var s ServiceLog
+		err := rows.Scan(&s.ID, &s.ServiceType, &s.Date, &s.Odometer, &s.CostCents, &s.Vendor,
+						&s.Notes, &s.CreatedAt)
+		if err != nil {
+			log.Printf("Failed to scan service logs: %v", err)
+			return nil, err
+		}
+		serviceLog = append(serviceLog, s)
+	}
+	if err = rows.Err(); err != nil {
+		log.Printf("Row errors: %v", err)
+		return nil, err
+	}
+	return serviceLog, err
 }
 
 // This is to update the car details
