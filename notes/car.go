@@ -71,6 +71,7 @@ func (h *CarHandlers) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /car", h.Update) // Updates the car details
 	mux.HandleFunc("GET /car/service", h.ServiceIndex) // List all services from a car
 	mux.HandleFunc("POST /car/service", h.CreateService) // Create/Edit a service
+	mux.HandleFunc("POST /car/service/{id}/delete", h.DeleteService)
 }
 
 func (h *CarHandlers) Index(w http.ResponseWriter, r *http.Request) {
@@ -270,17 +271,39 @@ func (h *CarHandlers) saveService(ctx context.Context, service ServiceLog) error
 			    cost_cents = ?, vendor = ?, notes = ?
 			WHERE id = ?
 		`
-		_, err := h.db.ExecContext(ctx, query,
+		r, err := h.db.ExecContext(ctx, query,
 			service.CarID, service.ServiceType, service.Date, service.Odometer, service.CostCents, 
 			service.Vendor, service.Notes, service.ID,
 		)
+		if err != nil {
+			return err
+		}
+		rowsAffected, err := r.RowsAffected()
+		if err != nil || rowsAffected == 0 {
+			log.Printf("could not update service: no row found with id %d", service.ID)
+			return err
+		}
 		return err
 	}
+}
+
+func (h *CarHandlers) deleteService(ctx context.Context, id int) error {
+	query := `
+		DELETE FROM service_log
+		WHERE id = ?
+	`
+	_, err := h.db.ExecContext(ctx, query, id)
+	return err
 }
 
 func (h *CarHandlers) CreateService(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		return
+	}
+	id, err := formInt(r, "id")
+	if err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
 		return
 	}
 	/* TODO Only one car right now, implement later
@@ -300,6 +323,7 @@ func (h *CarHandlers) CreateService(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	serviceLog := ServiceLog {
+		ID: id,
 		CarID: 1, // TODO: Implement way for multiple cars
 		ServiceType: r.FormValue("service_type"),
 		Date: r.FormValue("date"),
@@ -311,6 +335,20 @@ func (h *CarHandlers) CreateService(w http.ResponseWriter, r *http.Request) {
 	if err := h.saveService(r.Context(), serviceLog); err != nil {
 		log.Printf("save service: %v", err)
 		http.Error(w, "Failed to create service in database", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/car/service", http.StatusSeeOther)
+}
+
+func (h *CarHandlers) DeleteService(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(r.PathValue("id"))
+	if err != nil {
+		http.Error(w, "Invalid id format", http.StatusBadRequest)
+		return
+	}
+	if err := h.deleteService(r.Context(), id); err != nil {
+		log.Printf("delete service: %v", err)
+		http.Error(w, "Failed to delete service in database", http.StatusInternalServerError)
 		return
 	}
 	http.Redirect(w, r, "/car/service", http.StatusSeeOther)
