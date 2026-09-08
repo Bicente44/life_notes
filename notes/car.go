@@ -27,6 +27,12 @@ type servicePage struct {
 	// Error
 }
 
+type schedulePage struct {
+	Title string
+	Schedule []MaintenanceSchedule
+	// Error
+}
+
 type Car struct {
 	ID int
 	Make string
@@ -51,15 +57,26 @@ type Car struct {
 }
 
 type ServiceLog struct {
-		ID int
-		CarID int
-		ServiceType string
-		Date string
-		Odometer int
-		CostCents int
-		Vendor string
-		Notes string
-		CreatedAt string
+	ID int
+	CarID int
+	ServiceType string
+	Date string
+	Odometer int
+	CostCents int
+	Vendor string
+	Notes string
+	CreatedAt string
+}
+
+type MaintenanceSchedule struct {
+	ID int
+	CarID int
+	Name string
+	ServiceType string
+	IntervalKm int
+	IntervalMonths int
+	Enabled bool
+	Notes string
 }
 
 func NewCarHandlers(db *sql.DB, tpls map[string]*template.Template) *CarHandlers {
@@ -69,9 +86,14 @@ func NewCarHandlers(db *sql.DB, tpls map[string]*template.Template) *CarHandlers
 func (h *CarHandlers) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /car", h.Index)
 	mux.HandleFunc("POST /car", h.Update) // Updates the car details
+
 	mux.HandleFunc("GET /car/service", h.ServiceIndex) // List all services from a car
 	mux.HandleFunc("POST /car/service", h.CreateService) // Create/Edit a service
-	mux.HandleFunc("POST /car/service/{id}/delete", h.DeleteService)
+	mux.HandleFunc("POST /car/service/{id}/delete", h.DeleteService) // Delete a service
+
+	mux.HandleFunc("GET /car/schedule", h.ScheduleIndex) // List all maintenance schedules from a car
+	mux.HandleFunc("POST /car/schedule", h.CreateSchedule) // Create/Edit a maintenance schedule
+	mux.HandleFunc("POST /car/schedule/{id}/delete", h.DeleteSchedule) // Delete a maintenance schedule
 }
 
 func (h *CarHandlers) Index(w http.ResponseWriter, r *http.Request) {
@@ -100,6 +122,53 @@ func (h *CarHandlers) ServiceIndex(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (h *CarHandlers) ScheduleIndex(w http.ResponseWriter, r *http.Request) {
+	maintenanceSchedule, err := h.listSchedules(r.Context())
+	if err != nil {
+		log.Printf("get schedules: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	data := schedulePage{ Title: "Maintenence Schedule", Schedule: maintenanceSchedule }
+	if err := h.tpls["schedule"].ExecuteTemplate(w, "base", data); err != nil {
+		log.Printf("schedule template execution failed: %v", err)
+	}
+}
+
+func (h *CarHandlers) listSchedules(ctx context.Context) ([]MaintenanceSchedule, error) {
+	var schedule []MaintenanceSchedule
+	id := 1
+	query := `
+		SELECT
+			id, name, service_type, COALESCE(interval_km, 0),
+			COALESCE(interval_months, 0), enabled, COALESCE(notes, '')
+		FROM maintenance_schedule
+		WHERE car_id = ?
+		ORDER BY name
+	`
+	rows, err := h.db.QueryContext(ctx, query, id)
+	if err != nil {
+		log.Printf("List schedules db execution failed: %v", err)
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var s MaintenanceSchedule
+		err := rows.Scan(&s.ID, &s.Name, &s.ServiceType, &s.IntervalKm, &s.IntervalMonths, &s.Enabled,
+						&s.Notes)
+		if err != nil {
+			log.Printf("Failed to scan maintenance schedule rows: %v", err)
+			return nil, err
+		}
+		schedule = append(schedule, s)
+	}
+	if err = rows.Err(); err != nil {
+		log.Printf("Row errors: %v", err)
+		return nil, err
+	}
+	return schedule, err
+}
+
 func (h *CarHandlers) listServices(ctx context.Context) ([]ServiceLog, error) {
 	var serviceLog []ServiceLog
 	id := 1	// In the future make this as a param in getCar function (only one car right now)
@@ -122,7 +191,7 @@ func (h *CarHandlers) listServices(ctx context.Context) ([]ServiceLog, error) {
 		err := rows.Scan(&s.ID, &s.ServiceType, &s.Date, &s.Odometer, &s.CostCents, &s.Vendor,
 						&s.Notes, &s.CreatedAt)
 		if err != nil {
-			log.Printf("Failed to scan service logs: %v", err)
+			log.Printf("Failed to scan service log rows: %v", err)
 			return nil, err
 		}
 		serviceLog = append(serviceLog, s)
@@ -279,11 +348,14 @@ func (h *CarHandlers) saveService(ctx context.Context, service ServiceLog) error
 			return err
 		}
 		rowsAffected, err := r.RowsAffected()
-		if err != nil || rowsAffected == 0 {
+		if err != nil {
 			log.Printf("could not update service: no row found with id %d", service.ID)
 			return err
 		}
-		return err
+		if rowsAffected == 0 {
+			return sql.ErrNoRows
+		}
+		return nil
 	}
 }
 
@@ -352,6 +424,112 @@ func (h *CarHandlers) DeleteService(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/car/service", http.StatusSeeOther)
+}
+
+// Scheduled Maintenance functions
+func (h *CarHandlers) saveSchedule(ctx context.Context, schedule MaintenanceSchedule) error {
+	if schedule.ID == 0 { 
+		query := `
+			INSERT INTO maintenance_schedule 
+			(car_id, name, service_type, interval_km, interval_months, enabled, notes) 
+			VALUES (?, ?, ?, ?, ?, ?, ?)
+		`
+		_, err := h.db.ExecContext(ctx, query,
+			schedule.CarID, schedule.Name, schedule.ServiceType, schedule.IntervalKm, schedule.IntervalMonths,
+			schedule.Enabled, schedule.Notes,
+		)
+		return err
+	} else {
+		query := `
+			UPDATE maintenance_schedule 
+			SET car_id = ?, name = ?, service_type = ?, interval_km = ?,
+				interval_months = ?, enabled = ?, notes = ?
+			WHERE id = ?
+		`
+		r, err := h.db.ExecContext(ctx, query,
+			schedule.CarID, schedule.Name, schedule.ServiceType, schedule.IntervalKm, schedule.IntervalMonths,
+			schedule.Enabled, schedule.Notes, schedule.ID,
+		)
+		if err != nil {
+			return err
+		}
+		rowsAffected, err := r.RowsAffected()
+		if err != nil {
+			log.Printf("could not update schedule: no row found with id %d", schedule.ID)
+			return err
+		}
+		if rowsAffected == 0 {
+			return sql.ErrNoRows
+		}
+		return nil
+	}
+}
+
+func (h *CarHandlers) deleteSchedule(ctx context.Context, id int) error {
+	query := `
+		DELETE FROM maintenance_schedule
+		WHERE id = ?
+	`
+	_, err := h.db.ExecContext(ctx, query, id)
+	return err
+}
+
+func (h *CarHandlers) CreateSchedule(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		return
+	}
+	id, err := formInt(r, "id")
+	if err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		return
+	}
+	/* TODO Only one car right now, implement later
+	carID, err := formInt(r, "car_id")
+	if err != nil {
+		http.Error(w, "Invalid car ID", http.StatusBadRequest)
+		return
+	}*/
+	intervalKm, err := formInt(r, "interval_km")
+	if err != nil {
+		http.Error(w, "Invalid inteval km", http.StatusBadRequest)
+		return
+	}
+	intervalMonths, err := formInt(r, "interval_months")
+	if err != nil {
+		http.Error(w, "Invalid interval months", http.StatusBadRequest)
+		return
+	}
+	schedule := MaintenanceSchedule {
+		ID: id,
+		CarID: 1, // TODO: Implement way for multiple cars
+		Name: r.FormValue("name"),
+		ServiceType: r.FormValue("service_type"),
+		IntervalKm:	intervalKm, 
+		IntervalMonths: intervalMonths,
+		Enabled: r.FormValue("enabled") == "on",
+		Notes: r.FormValue("notes"),
+	}
+	if err := h.saveSchedule(r.Context(), schedule); err != nil {
+		log.Printf("save schedule: %v", err)
+		http.Error(w, "Failed to create schedule in database", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/car/schedule", http.StatusSeeOther)
+}
+
+func (h *CarHandlers) DeleteSchedule(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(r.PathValue("id"))
+	if err != nil {
+		http.Error(w, "Invalid id format", http.StatusBadRequest)
+		return
+	}
+	if err := h.deleteSchedule(r.Context(), id); err != nil {
+		log.Printf("delete schedule: %v", err)
+		http.Error(w, "Failed to delete schedule in database", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/car/schedule", http.StatusSeeOther)
 }
 
 // Claculations and Helpers

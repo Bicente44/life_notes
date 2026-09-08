@@ -256,7 +256,9 @@ func initDB(ctx context.Context, db *sql.DB) error {
 }
 
 func parseTemplates() (map[string]*template.Template, error) {
-	pages := []string{ "home", "car", "service" }
+	pages := []string{ "home",									// Project pages
+					"car", "service", "schedule", 				// Car pages
+				}
 	templates := make(map[string]*template.Template)
 
 	for _, name := range pages {
