@@ -232,14 +232,14 @@ func initDB(ctx context.Context, db *sql.DB) error {
 			2010,
 			"Base",
 			"XXXXXXXXXXX",
-			"XXXXXX",
+			"DFRF 955",
 			"Black",
-			"2023-06-15",
-			2000,
+			"2025-08-30",
+			200000,
 			200000,
 			"XXX",
-			0.0,
-			"INSURANCE",
+			3.7,
+			"belairdirect",
 			"POLICY",
 			"XXXX-XX-XX",
 			"XXXX-XX-XX",
@@ -256,8 +256,8 @@ func initDB(ctx context.Context, db *sql.DB) error {
 }
 
 func parseTemplates() (map[string]*template.Template, error) {
-	pages := []string{ "home",										// Project pages
-					"car", "service", "schedule", "parts",			// Car pages
+	pages := []string{ "home",													// Project pages
+					"car", "service", "schedule", "parts", "fuel", 				// Car pages
 				}
 	templates := make(map[string]*template.Template)
 

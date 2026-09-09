@@ -31,7 +31,7 @@ essentially and fills the template's data holes.
 - Implement the rest of car
     - Design UI
     - Implement the rest of the functionality interacting with all car tables in DB
-        - Such as Gas filling and more?
+        - Such as warranty logs and more?
     - Proper error handling, pass an error on page struct
     - Summary of costs
     - Auto convert from frontend dollar to cent to make it less complicated

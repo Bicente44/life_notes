@@ -38,6 +38,11 @@ type partsPage struct {
 	Part []Part
 }
 
+type fuelPage struct {
+	Title string
+	FuelLogs []FuelLog
+}
+
 type Car struct {
 	ID int
 	Make string
@@ -97,6 +102,20 @@ type Part struct {
 	CreatedAt string
 }
 
+type FuelLog struct {
+	ID int
+	CarID int
+	Date string
+	Odometer int
+	Litres float64
+	PricePerLitreCents int
+	TotalCents int
+	Station string
+	IsFullTank bool
+	Notes string
+	CreatedAt string
+}
+
 func NewCarHandlers(db *sql.DB, tpls map[string]*template.Template) *CarHandlers {
 	return &CarHandlers{db: db, tpls: tpls}
 }
@@ -113,10 +132,13 @@ func (h *CarHandlers) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /car/schedule", h.CreateSchedule) // Create/Edit a maintenance schedule
 	mux.HandleFunc("POST /car/schedule/{id}/delete", h.DeleteSchedule) // Delete a maintenance schedule
 
-	mux.HandleFunc("GET /car/parts", h.PartIndex) // List all maintenance schedules from a car
-	mux.HandleFunc("POST /car/parts", h.CreatePart) // Create/Edit a maintenance schedule
-	mux.HandleFunc("POST /car/parts/{id}/parts", h.DeletePart) // Delete a maintenance schedule
-
+	mux.HandleFunc("GET /car/parts", h.PartIndex) // List all parts from a car
+	mux.HandleFunc("POST /car/parts", h.CreatePart) // Create/Edit a part
+	mux.HandleFunc("POST /car/parts/{id}/delete", h.DeletePart) // Delete a part
+	
+	mux.HandleFunc("GET /car/fuel", h.FuelIndex) // List all fuel logs from a car
+	mux.HandleFunc("POST /car/fuel", h.CreateFuelLog) // Create/Edit a fuel log
+	mux.HandleFunc("POST /car/fuel/{id}/delete", h.DeleteFuelLog) // Delete a fuel log
 }
 
 func (h *CarHandlers) Index(w http.ResponseWriter, r *http.Request) {
@@ -732,4 +754,167 @@ func formFloat(r *http.Request, name string) (float64, error) {
 		return 0.0, nil
 	}
 	return strconv.ParseFloat(v, 64)
+}
+
+// Fuel functions
+func (h *CarHandlers) FuelIndex(w http.ResponseWriter, r *http.Request) {
+	fuelLogs, err := h.listFuelLogs(r.Context())
+	if err != nil {
+		log.Printf("get fuel logs: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	data := fuelPage{ Title: "Fuel", FuelLogs: fuelLogs}
+	if err := h.tpls["fuel"].ExecuteTemplate(w, "base", data); err != nil {
+		log.Printf("fuel template execution failed: %v", err)
+	}
+}
+
+func (h *CarHandlers) listFuelLogs(ctx context.Context) ([]FuelLog, error) {
+	var fuelLogs []FuelLog
+	id := 1
+	query := `
+		SELECT
+			id, date, odometer, litres, COALESCE(price_per_litre_cents, 0), COALESCE(total_cents, 0),
+			COALESCE(station, ''), is_full_tank, COALESCE(notes, ''), created_at
+		FROM fuel_log
+		WHERE car_id = ?
+		ORDER BY date DESC
+	`
+	rows, err := h.db.QueryContext(ctx, query, id)
+	if err != nil {
+		log.Printf("List fuel logs db execution failed: %v", err)
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var f FuelLog
+		err := rows.Scan(&f.ID, &f.Date, &f.Odometer, &f.Litres, &f.PricePerLitreCents, &f.TotalCents,
+						&f.Station, &f.IsFullTank, &f.Notes, &f.CreatedAt)
+		if err != nil {
+			log.Printf("Failed to scan fuel log rows: %v", err)
+			return nil, err
+		}
+		fuelLogs = append(fuelLogs, f)
+	}
+	if err = rows.Err(); err != nil {
+		log.Printf("Row errors: %v", err)
+		return nil, err
+	}
+	return fuelLogs, err
+}
+
+func (h *CarHandlers) saveFuelLog(ctx context.Context, f FuelLog) error {
+	if f.ID == 0 { 
+		query := `
+			INSERT INTO fuel_log
+			(id, date, odometer, litres, price_per_litre_cents, total_cents, station, is_full_tank, notes, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`
+		_, err := h.db.ExecContext(ctx, query,
+			f.ID, f.Date, f.Odometer, f.Litres, f.PricePerLitreCents, f.TotalCents,
+			f.Station, f.IsFullTank, f.Notes, time.Now().Format(time.RFC3339),
+		)
+		return err
+	} else {
+		query := `
+			UPDATE part
+			SET car_id = ?, date = ?, odometer = ?, litres = ?, price_per_litre_cents = ?,
+			total_cents = ?, station = ?, is_full_tank = ?, notes = ?,
+			WHERE id = ?
+		`
+		r, err := h.db.ExecContext(ctx, query,
+			f.CarID, f.Date, f.Odometer, f.Litres, f.PricePerLitreCents, f.TotalCents,
+			f.Station, f.IsFullTank, f.Notes, f.ID,
+		)
+		if err != nil {
+			return err
+		}
+		rowsAffected, err := r.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if rowsAffected == 0 {
+			return sql.ErrNoRows
+		}
+		return nil
+	}
+}
+
+func (h *CarHandlers) deleteFuelLog(ctx context.Context, id int) error {
+	query := `
+		DELETE FROM fuel_log
+		WHERE id = ?
+	`
+	_, err := h.db.ExecContext(ctx, query, id)
+	return err
+}
+
+func (h *CarHandlers) CreateFuelLog(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		return
+	}
+	id, err := formInt(r, "id")
+	if err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		return
+	}
+	odometer, err := formInt(r, "odometer")
+	if err != nil {
+		http.Error(w, "Invalid odometer", http.StatusBadRequest)
+		return
+	}
+	/* TODO Only one car right now, implement later
+	carID, err := formInt(r, "car_id")
+	if err != nil {
+		http.Error(w, "Invalid car ID", http.StatusBadRequest)
+		return
+	}*/
+	litres, err := formFloat(r, "litres")
+	if err != nil {
+		http.Error(w, "Invalid litres", http.StatusBadRequest)
+		return
+	}
+	pricePerLitreCents, err := formInt(r, "price_per_litre_cents")
+	if err != nil {
+		http.Error(w, "Invalid price per litre cents", http.StatusBadRequest)
+		return
+	}
+	totalCents, err := formInt(r, "total_cents")
+	if err != nil {
+		http.Error(w, "Invalid total cents", http.StatusBadRequest)
+		return
+	}
+	fuelLog := FuelLog {
+		ID: id,
+		CarID: 1, // TODO: Implement way for multiple cars
+		Date: r.FormValue("date"),
+		Odometer: odometer,
+		Litres: litres,
+		PricePerLitreCents:	pricePerLitreCents, 
+		TotalCents: totalCents,
+		IsFullTank: r.FormValue("is_full_tank") == "on",
+		Notes: r.FormValue("notes"),
+	}
+	if err := h.saveFuelLog(r.Context(), fuelLog); err != nil {
+		log.Printf("save fuel log: %v", err)
+		http.Error(w, "Failed to create fuel log in database", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/car/fuel", http.StatusSeeOther)
+}
+
+func (h *CarHandlers) DeleteFuelLog(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(r.PathValue("id"))
+	if err != nil {
+		http.Error(w, "Invalid id format", http.StatusBadRequest)
+		return
+	}
+	if err := h.deleteFuelLog(r.Context(), id); err != nil {
+		log.Printf("delete fuel log: %v", err)
+		http.Error(w, "Failed to delete fuel log in database", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/car/fuel", http.StatusSeeOther)
 }
