@@ -122,7 +122,8 @@ func NewCarHandlers(db *sql.DB, tpls map[string]*template.Template) *CarHandlers
 
 func (h *CarHandlers) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /car", h.Index)
-	mux.HandleFunc("POST /car", h.Update) // Updates the car details
+	mux.HandleFunc("POST /car", h.SaveCar) // Updates the car details
+	mux.HandleFunc("POST /car/{id}/delete", h.DeleteCar) // Updates the car details
 
 	mux.HandleFunc("GET /car/service", h.ServiceIndex) // List all services from a car
 	mux.HandleFunc("POST /car/service", h.CreateService) // Create/Edit a service
@@ -142,7 +143,7 @@ func (h *CarHandlers) Register(mux *http.ServeMux) {
 }
 
 func (h *CarHandlers) Index(w http.ResponseWriter, r *http.Request) {
-	car, err := h.getCar(r.Context())
+	car, err := h.getCar(r.Context(), 1)
 	if err != nil {
 		log.Printf("get car: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
@@ -248,67 +249,8 @@ func (h *CarHandlers) listServices(ctx context.Context) ([]ServiceLog, error) {
 	return serviceLog, err
 }
 
-// This is to update the car details
-func (h *CarHandlers) Update(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Failed to parse form", http.StatusBadRequest)
-		return
-	}
-	id, err := formInt(r, "id")
-	if err != nil {
-		http.Error(w, "Invalid ID format", http.StatusBadRequest)
-		return
-	}
-	year, err := formInt(r, "year")
-	if err != nil {
-		http.Error(w, "Invalid year format", http.StatusBadRequest)
-		return
-	}
-	price, err := formInt(r, "purchase_price_cents")
-	if err != nil {
-		http.Error(w, "Invalid price format", http.StatusBadRequest)
-		return
-	}
-	odometer, err := formInt(r, "purchase_odometer")
-	if err != nil {
-		http.Error(w, "Invalid odometer format", http.StatusBadRequest)
-		return
-	}
-	oilCap, err := formFloat(r, "oil_capacity_l")
-	if err != nil {
-		http.Error(w, "Invalid oil capacity format", http.StatusBadRequest)
-		return
-	}
-	car := Car{
-		ID:                    id,
-		Make:                  r.FormValue("make"),
-		Model:                 r.FormValue("model"),
-		Year:                  year,
-		Trim:                  r.FormValue("trim"),
-		Vin:                   r.FormValue("vin"),
-		LicensePlate:          r.FormValue("license_plate"),
-		Color:                 r.FormValue("color"),
-		PurchaseDate:          r.FormValue("purchase_date"),
-		PurchasePriceCents:    price,
-		PurchaseOdometer:      odometer,
-		OilType:               r.FormValue("oil_type"),
-		OilCapacityL:          oilCap,
-		InsuranceProvider:     r.FormValue("insurance_provider"),
-		InsurancePolicyNumber: r.FormValue("insurance_policy_number"),
-		InsuranceExp:          r.FormValue("insurance_expires"),
-		RegistrationExp:       r.FormValue("registration_expires"),
-		Notes:                 r.FormValue("notes"),
-	}
-	if err := h.updateCar(r.Context(), car); err != nil {
-		http.Error(w, "Failed to update car in database", http.StatusInternalServerError)
-		return
-	}
-	http.Redirect(w, r, "/car", http.StatusSeeOther)
-}
-
-func (h *CarHandlers) getCar(ctx context.Context) (Car, error) {
+func (h *CarHandlers) getCar(ctx context.Context, id int) (Car, error) {
 	var car Car
-	id := 1	// In the future make this as a param in getCar function (only one car right now)
 	query := `
 		SELECT 
 			id, make, model, year, trim, vin, license_plate, color, 
@@ -321,7 +263,7 @@ func (h *CarHandlers) getCar(ctx context.Context) (Car, error) {
 	`
 	err := h.db.QueryRowContext(ctx, query, id).Scan(
 		&car.ID, &car.Make, &car.Model, &car.Year, &car.Trim, &car.Vin,
-		&car.LicensePlate, &car.Color,&car.PurchaseDate, &car.PurchasePriceCents,
+		&car.LicensePlate, &car.Color, &car.PurchaseDate, &car.PurchasePriceCents,
 		&car.PurchaseOdometer,&car.OilType, &car.OilCapacityL, &car.InsuranceProvider, 
 		&car.InsurancePolicyNumber, &car.InsuranceExp, &car.RegistrationExp,&car.Notes,
 		&car.UpdatedAt, &car.CreatedAt,
@@ -329,41 +271,43 @@ func (h *CarHandlers) getCar(ctx context.Context) (Car, error) {
 	return car, err
 }
 
-// Updates the whole car, this simplifies things instead of having many insert funcs
-func (h *CarHandlers) updateCar(ctx context.Context, car Car) error {
-	query :=`
-			UPDATE car SET 
-				make = ?, model = ?, year = ?, trim = ?, vin = ?, license_plate = ?, color = ?, 
-				purchase_date = ?, purchase_price_cents = ?, purchase_odometer = ?, 
-				oil_type = ?, oil_capacity_l = ?, insurance_provider = ?, 
-				insurance_policy_number = ?, insurance_expires = ?, registration_expires = ?, 
-				notes = ?, updated_at = ?
-			WHERE id = ?
-			`
-	updatedAt := time.Now().Format(time.RFC3339)
-
-	_, err := h.db.ExecContext(ctx, query,
-			car.Make, 
-			car.Model, 
-			car.Year, 
-			car.Trim, 
-			car.Vin, 
-			car.LicensePlate, 
-			car.Color,
-			car.PurchaseDate, 
-			car.PurchasePriceCents, 
-			car.PurchaseOdometer,
-			car.OilType, 
-			car.OilCapacityL, 
-			car.InsuranceProvider,
-			car.InsurancePolicyNumber, 
-			car.InsuranceExp, 
-			car.RegistrationExp,
-			car.Notes, 
-			updatedAt,
-			car.ID,    // WHERE
+func (h *CarHandlers) listCars(ctx context.Context) ([]Car, error) {
+	var cars []Car
+	query := `
+		SELECT 
+			id, make, model, year, trim, vin, license_plate, color, 
+			purchase_date, purchase_price_cents, purchase_odometer, 
+			oil_type, oil_capacity_l, insurance_provider, 
+			insurance_policy_number, insurance_expires, registration_expires, 
+			notes, updated_at, created_at
+		FROM car 
+	`
+	rows, err := h.db.QueryContext(ctx, query)
+	if err != nil {
+		log.Printf("List service db execution failed: %v", err)
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var car Car
+		err := rows.Scan(
+			&car.ID, &car.Make, &car.Model, &car.Year, &car.Trim, &car.Vin,
+			&car.LicensePlate, &car.Color, &car.PurchaseDate, &car.PurchasePriceCents,
+			&car.PurchaseOdometer,&car.OilType, &car.OilCapacityL, &car.InsuranceProvider, 
+			&car.InsurancePolicyNumber, &car.InsuranceExp, &car.RegistrationExp,&car.Notes,
+			&car.UpdatedAt, &car.CreatedAt,
 		)
-	return err
+		if err != nil {
+			log.Printf("Failed to scan service log rows: %v", err)
+			return nil, err
+		}
+		cars = append(cars, car)
+	}
+	if err = rows.Err(); err != nil {
+		log.Printf("Row errors: %v", err)
+		return nil, err
+	}
+	return cars, err
 }
 
 func (h *CarHandlers) saveService(ctx context.Context, service ServiceLog) error {
@@ -639,7 +583,7 @@ func (h *CarHandlers) savePart(ctx context.Context, part Part) error {
 		query := `
 			UPDATE part
 			SET car_id = ?, name = ?, category = ?, description = ?, cost_cents = ?,
-				purchase_date = ?, status = ?, notes = ?,
+				purchase_date = ?, status = ?, notes = ?
 			WHERE id = ?
 		`
 		r, err := h.db.ExecContext(ctx, query,
@@ -808,19 +752,19 @@ func (h *CarHandlers) saveFuelLog(ctx context.Context, f FuelLog) error {
 	if f.ID == 0 { 
 		query := `
 			INSERT INTO fuel_log
-			(id, date, odometer, litres, price_per_litre_cents, total_cents, station, is_full_tank, notes, created_at)
+			(car_id, date, odometer, litres, price_per_litre_cents, total_cents, station, is_full_tank, notes, created_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`
 		_, err := h.db.ExecContext(ctx, query,
-			f.ID, f.Date, f.Odometer, f.Litres, f.PricePerLitreCents, f.TotalCents,
+			f.CarID, f.Date, f.Odometer, f.Litres, f.PricePerLitreCents, f.TotalCents,
 			f.Station, f.IsFullTank, f.Notes, time.Now().Format(time.RFC3339),
 		)
 		return err
 	} else {
 		query := `
-			UPDATE part
+			UPDATE fuel_log
 			SET car_id = ?, date = ?, odometer = ?, litres = ?, price_per_litre_cents = ?,
-			total_cents = ?, station = ?, is_full_tank = ?, notes = ?,
+			total_cents = ?, station = ?, is_full_tank = ?, notes = ?
 			WHERE id = ?
 		`
 		r, err := h.db.ExecContext(ctx, query,
@@ -894,6 +838,7 @@ func (h *CarHandlers) CreateFuelLog(w http.ResponseWriter, r *http.Request) {
 		Litres: litres,
 		PricePerLitreCents:	pricePerLitreCents, 
 		TotalCents: totalCents,
+		Station: r.FormValue("station"),
 		IsFullTank: r.FormValue("is_full_tank") == "on",
 		Notes: r.FormValue("notes"),
 	}
@@ -917,4 +862,141 @@ func (h *CarHandlers) DeleteFuelLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/car/fuel", http.StatusSeeOther)
+}
+
+
+// Car functions
+func (h *CarHandlers) saveCar(ctx context.Context, car Car) (int, error) {
+	if car.ID == 0 { 
+		query := `
+			INSERT INTO car
+			(make, model, year, trim, vin, license_plate, color, purchase_date, purchase_price_cents,
+			purchase_odometer, oil_type, oil_capacity_l, insurance_provider, insurance_policy_number,
+			insurance_expires, registration_expires, notes, updated_at, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`
+		result, err := h.db.ExecContext(ctx, query,
+			car.Make, car.Model, car.Year, car.Trim, car.Vin,
+			car.LicensePlate, car.Color, car.PurchaseDate, car.PurchasePriceCents,
+			car.PurchaseOdometer, car.OilType, car.OilCapacityL, car.InsuranceProvider, 
+			car.InsurancePolicyNumber, car.InsuranceExp, car.RegistrationExp, car.Notes,
+			time.Now().Format(time.RFC3339), time.Now().Format(time.RFC3339),
+		)
+		if err != nil {
+			log.Printf("Create car db execution failed: %v", err)
+			return car.ID, err
+		}
+		newId, err := result.LastInsertId()
+
+		return int(newId), err
+	} else {
+		query := `
+			UPDATE car
+			SET make = ?, model = ?, year = ?, trim = ?, vin = ?, license_plate = ?,
+			color = ?, purchase_date = ?, purchase_price_cents = ?, purchase_odometer = ?,
+			oil_type = ?, oil_capacity_l = ?, insurance_provider = ?, insurance_policy_number = ?,
+			insurance_expires = ?, registration_expires = ?, notes = ?, updated_at = ?
+			WHERE id = ?
+		`
+		r, err := h.db.ExecContext(ctx, query,
+			car.Make, car.Model, car.Year, car.Trim, car.Vin,
+			car.LicensePlate, car.Color, car.PurchaseDate, car.PurchasePriceCents,
+			car.PurchaseOdometer, car.OilType, car.OilCapacityL, car.InsuranceProvider, 
+			car.InsurancePolicyNumber, car.InsuranceExp, car.RegistrationExp, car.Notes,
+			time.Now().Format(time.RFC3339), car.ID,
+		)
+		if err != nil {
+			return car.ID, err
+		}
+		rowsAffected, err := r.RowsAffected()
+		if err != nil {
+			return car.ID, err
+		}
+		if rowsAffected == 0 {
+			return car.ID, sql.ErrNoRows
+		}
+		return car.ID, nil
+	}
+}
+
+func (h *CarHandlers) deleteCar(ctx context.Context, id int) error {
+	query := `
+		DELETE FROM car
+		WHERE id = ?
+	`
+	_, err := h.db.ExecContext(ctx, query, id)
+	return err
+}
+
+func (h *CarHandlers) SaveCar(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		return
+	}
+	id, err := formInt(r, "id")
+	if err != nil {
+		http.Error(w, "Invalid odometer", http.StatusBadRequest)
+		return
+	}
+	year, err := formInt(r, "year")
+	if err != nil {
+		http.Error(w, "Invalid odometer", http.StatusBadRequest)
+		return
+	}
+	purchasePriceCents, err := formInt(r, "purchase_price_cents")
+	if err != nil {
+		http.Error(w, "Invalid litres", http.StatusBadRequest)
+		return
+	}
+	purchaseOdometer, err := formInt(r, "purchase_odometer")
+	if err != nil {
+		http.Error(w, "Invalid price per litre cents", http.StatusBadRequest)
+		return
+	}
+	oilCapacityL, err := formFloat(r, "oil_capacity_l")
+	if err != nil {
+		http.Error(w, "Invalid total cents", http.StatusBadRequest)
+		return
+	}
+	car := Car {
+		ID: id,
+		Make: r.FormValue("make"),
+		Model: r.FormValue("model"),
+		Year: year,
+		Trim: r.FormValue("trim"),
+		Vin: r.FormValue("vin"),
+		LicensePlate: r.FormValue("license_plate"),
+		Color: r.FormValue("color"),
+		PurchaseDate: r.FormValue("purchase_date"),
+		PurchasePriceCents: purchasePriceCents,
+		PurchaseOdometer: purchaseOdometer,
+		OilType: r.FormValue("oil_type"),
+		OilCapacityL: oilCapacityL,
+		InsuranceProvider: r.FormValue("insurance_provider"),
+		InsurancePolicyNumber: r.FormValue("insurance_policy_number"),
+		InsuranceExp: r.FormValue("insurance_expires"),
+		RegistrationExp: r.FormValue("registration_expires"),
+		Notes: r.FormValue("notes"),
+	}
+	carID, err := h.saveCar(r.Context(), car); // replace _ with id because it returns the car at which you should be viewing
+	if err != nil {
+		log.Printf("failed to save car id=%d: %v", carID, err)
+		http.Error(w, "Failed to create car in database", http.StatusInternalServerError) // update link when car id is returned
+		return
+	}
+	http.Redirect(w, r, "/car", http.StatusSeeOther)
+}
+
+func (h *CarHandlers) DeleteCar(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(r.PathValue("id"))
+	if err != nil {
+		http.Error(w, "Invalid id format", http.StatusBadRequest)
+		return
+	}
+	if err := h.deleteCar(r.Context(), id); err != nil {
+		log.Printf("delete car: %v", err)
+		http.Error(w, "Failed to delete car in database", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/car", http.StatusSeeOther)
 }
