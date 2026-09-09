@@ -33,6 +33,11 @@ type schedulePage struct {
 	// Error
 }
 
+type partsPage struct {
+	Title string
+	Part []Part
+}
+
 type Car struct {
 	ID int
 	Make string
@@ -79,6 +84,19 @@ type MaintenanceSchedule struct {
 	Notes string
 }
 
+type Part struct {
+	ID int
+	CarID int
+	Name string
+	Category string
+	Description string
+	CostCents int
+	PurchaseDate string
+	Status string
+	Notes string
+	CreatedAt string
+}
+
 func NewCarHandlers(db *sql.DB, tpls map[string]*template.Template) *CarHandlers {
 	return &CarHandlers{db: db, tpls: tpls}
 }
@@ -94,6 +112,11 @@ func (h *CarHandlers) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /car/schedule", h.ScheduleIndex) // List all maintenance schedules from a car
 	mux.HandleFunc("POST /car/schedule", h.CreateSchedule) // Create/Edit a maintenance schedule
 	mux.HandleFunc("POST /car/schedule/{id}/delete", h.DeleteSchedule) // Delete a maintenance schedule
+
+	mux.HandleFunc("GET /car/parts", h.PartIndex) // List all maintenance schedules from a car
+	mux.HandleFunc("POST /car/parts", h.CreatePart) // Create/Edit a maintenance schedule
+	mux.HandleFunc("POST /car/parts/{id}/parts", h.DeletePart) // Delete a maintenance schedule
+
 }
 
 func (h *CarHandlers) Index(w http.ResponseWriter, r *http.Request) {
@@ -349,7 +372,6 @@ func (h *CarHandlers) saveService(ctx context.Context, service ServiceLog) error
 		}
 		rowsAffected, err := r.RowsAffected()
 		if err != nil {
-			log.Printf("could not update service: no row found with id %d", service.ID)
 			return err
 		}
 		if rowsAffected == 0 {
@@ -455,7 +477,6 @@ func (h *CarHandlers) saveSchedule(ctx context.Context, schedule MaintenanceSche
 		}
 		rowsAffected, err := r.RowsAffected()
 		if err != nil {
-			log.Printf("could not update schedule: no row found with id %d", schedule.ID)
 			return err
 		}
 		if rowsAffected == 0 {
@@ -530,6 +551,154 @@ func (h *CarHandlers) DeleteSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/car/schedule", http.StatusSeeOther)
+}
+
+// PARTS FUNCTIONS:
+func (h *CarHandlers) PartIndex(w http.ResponseWriter, r *http.Request) {
+	partList, err := h.listParts(r.Context())
+	if err != nil {
+		log.Printf("get parts: %v", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	data := partsPage{ Title: "Parts", Part: partList}
+	if err := h.tpls["parts"].ExecuteTemplate(w, "base", data); err != nil {
+		log.Printf("parts template execution failed: %v", err)
+	}
+}
+
+func (h *CarHandlers) listParts(ctx context.Context) ([]Part, error) {
+	var partList []Part
+	id := 1
+	query := `
+		SELECT
+			id, name, category, COALESCE(description, ''), COALESCE(cost_cents, 0),
+			COALESCE(purchase_date, ''), status, COALESCE(notes, ''), created_at
+		FROM part
+		WHERE car_id = ?
+		ORDER BY name
+	`
+	rows, err := h.db.QueryContext(ctx, query, id)
+	if err != nil {
+		log.Printf("List parts db execution failed: %v", err)
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var p Part
+		err := rows.Scan(&p.ID, &p.Name, &p.Category, &p.Description, &p.CostCents, &p.PurchaseDate,
+						&p.Status, &p.Notes, &p.CreatedAt)
+		if err != nil {
+			log.Printf("Failed to scan part rows: %v", err)
+			return nil, err
+		}
+		partList = append(partList, p)
+	}
+	if err = rows.Err(); err != nil {
+		log.Printf("Row errors: %v", err)
+		return nil, err
+	}
+	return partList, err
+}
+
+func (h *CarHandlers) savePart(ctx context.Context, part Part) error {
+	if part.ID == 0 { 
+		query := `
+			INSERT INTO part
+			(car_id, name, category, description, cost_cents, purchase_date, status, notes, created_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`
+		_, err := h.db.ExecContext(ctx, query,
+			part.CarID, part.Name, part.Category, part.Description, part.CostCents,
+			part.PurchaseDate, part.Status, part.Notes, time.Now().Format(time.RFC3339),
+		)
+		return err
+	} else {
+		query := `
+			UPDATE part
+			SET car_id = ?, name = ?, category = ?, description = ?, cost_cents = ?,
+				purchase_date = ?, status = ?, notes = ?,
+			WHERE id = ?
+		`
+		r, err := h.db.ExecContext(ctx, query,
+			part.CarID, part.Name, part.Category, part.Description, part.CostCents, part.PurchaseDate,
+			part.Status, part.Notes, part.ID,
+		)
+		if err != nil {
+			return err
+		}
+		rowsAffected, err := r.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if rowsAffected == 0 {
+			return sql.ErrNoRows
+		}
+		return nil
+	}
+}
+
+func (h *CarHandlers) deletePart(ctx context.Context, id int) error {
+	query := `
+		DELETE FROM part
+		WHERE id = ?
+	`
+	_, err := h.db.ExecContext(ctx, query, id)
+	return err
+}
+
+func (h *CarHandlers) CreatePart(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		return
+	}
+	id, err := formInt(r, "id")
+	if err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		return
+	}
+	/* TODO Only one car right now, implement later
+	carID, err := formInt(r, "car_id")
+	if err != nil {
+		http.Error(w, "Invalid car ID", http.StatusBadRequest)
+		return
+	}*/
+	costCents, err := formInt(r, "cost_cents")
+	if err != nil {
+		http.Error(w, "Invalid cost cents", http.StatusBadRequest)
+		return
+	}
+	part := Part {
+		ID: id,
+		CarID: 1, // TODO: Implement way for multiple cars
+		Name: r.FormValue("name"),
+		Category: r.FormValue("category"),
+		Description: r.FormValue("description"),
+		CostCents:	costCents, 
+		PurchaseDate: r.FormValue("purchase_date"),
+		Status: r.FormValue("status"),
+		Notes: r.FormValue("notes"),
+	}
+	if err := h.savePart(r.Context(), part); err != nil {
+		log.Printf("save part: %v", err)
+		http.Error(w, "Failed to create part in database", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/car/parts", http.StatusSeeOther)
+}
+
+func (h *CarHandlers) DeletePart(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(r.PathValue("id"))
+	if err != nil {
+		http.Error(w, "Invalid id format", http.StatusBadRequest)
+		return
+	}
+	if err := h.deletePart(r.Context(), id); err != nil {
+		log.Printf("delete part: %v", err)
+		http.Error(w, "Failed to delete part in database", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/car/parts", http.StatusSeeOther)
 }
 
 // Claculations and Helpers
