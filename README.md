@@ -22,7 +22,7 @@ they call a redirect to refresh the data if everything is success.
 
 - templates/
 This folder contains the html layout pages and the note pages. The note pages are registered in main and are
-attatched with the HTTP methods in the 'notes/_.go' files so when you say for example reach /car in the browser
+attatched with the HTTP methods in the `notes/_.go` files so when you say for example reach /car in the browser
 we have already attached the GET with the car data information from the database so it sends the template the data
 essentially and fills the template's data holes.
 
@@ -31,15 +31,17 @@ essentially and fills the template's data holes.
 - Implement the rest of car
     - Design UI
     - Implement the rest of the functionality interacting with all car tables in DB
-        - Such as Gas filling, Parts management, more?
+        - Such as Gas filling and more?
     - Proper error handling, pass an error on page struct
     - Summary of costs
     - Auto convert from frontend dollar to cent to make it less complicated
     - Auto fill values or at least show what the previous one was
 
 - Implement other notes
-    - Finance (spending, debts & payroll)
+    - Finance (spending, debts, payroll)
     - Possible course notes? (i write on paper usually so maybe write & store images?)
+    - Shopping list ?
 
 ## Features/Extra
 - In main page or something, show a calendar of current month and upcoming dates.
+- One day when the server node program is fully implemented, see about syncing the DB there? (Concept project)
