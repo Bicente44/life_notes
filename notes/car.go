@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 	"strconv"
+	"fmt"
 )
 
 type CarHandlers struct {
@@ -18,29 +19,34 @@ type CarHandlers struct {
 type carPage struct {
 	Title string
 	Car	Car
+	CarID int
 	// Error
 }
 
 type servicePage struct {
 	Title string
 	Services []ServiceLog
+	CarID int
 	// Error
 }
 
 type schedulePage struct {
 	Title string
 	Schedule []MaintenanceSchedule
+	CarID int
 	// Error
 }
 
 type partsPage struct {
 	Title string
 	Part []Part
+	CarID int
 }
 
 type fuelPage struct {
 	Title string
 	FuelLogs []FuelLog
+	CarID int
 }
 
 type Car struct {
@@ -143,56 +149,58 @@ func (h *CarHandlers) Register(mux *http.ServeMux) {
 }
 
 func (h *CarHandlers) Index(w http.ResponseWriter, r *http.Request) {
-	car, err := h.getCar(r.Context(), 1)
+	carID := getCarID(r)
+	car, err := h.getCar(r.Context(), carID)
 	if err != nil {
 		log.Printf("get car: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-	data := carPage{ Title: "Car", Car: car }
+	data := carPage{ Title: "Car", Car: car, CarID: carID }
 	if err := h.tpls["car"].ExecuteTemplate(w, "base", data); err != nil {
 		log.Printf("car template execution failed: %v", err)
 	}
 }
 
 func (h *CarHandlers) ServiceIndex(w http.ResponseWriter, r *http.Request) {
-	serviceLogs, err := h.listServices(r.Context())
+	carID := getCarID(r)
+	serviceLogs, err := h.listServices(r.Context(), carID)
 	if err != nil {
 		log.Printf("get services: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-	data := servicePage{ Title: "Services", Services: serviceLogs }
+	data := servicePage{ Title: "Services", Services: serviceLogs, CarID: carID }
 	if err := h.tpls["service"].ExecuteTemplate(w, "base", data); err != nil {
 		log.Printf("service template execution failed: %v", err)
 	}
 }
 
 func (h *CarHandlers) ScheduleIndex(w http.ResponseWriter, r *http.Request) {
-	maintenanceSchedule, err := h.listSchedules(r.Context())
+	carID := getCarID(r)
+	maintenanceSchedule, err := h.listSchedules(r.Context(), carID)
 	if err != nil {
 		log.Printf("get schedules: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-	data := schedulePage{ Title: "Maintenence Schedule", Schedule: maintenanceSchedule }
+	data := schedulePage{ Title: "Maintenence Schedule", Schedule: maintenanceSchedule, CarID: carID }
 	if err := h.tpls["schedule"].ExecuteTemplate(w, "base", data); err != nil {
 		log.Printf("schedule template execution failed: %v", err)
 	}
 }
 
-func (h *CarHandlers) listSchedules(ctx context.Context) ([]MaintenanceSchedule, error) {
+func (h *CarHandlers) listSchedules(ctx context.Context, carID int) ([]MaintenanceSchedule, error) {
 	var schedule []MaintenanceSchedule
-	id := 1
 	query := `
 		SELECT
-			id, name, service_type, COALESCE(interval_km, 0),
+			id, car_id, name, service_type, COALESCE(interval_km, 0),
 			COALESCE(interval_months, 0), enabled, COALESCE(notes, '')
 		FROM maintenance_schedule
 		WHERE car_id = ?
 		ORDER BY name
 	`
-	rows, err := h.db.QueryContext(ctx, query, id)
+	rows, err := h.db.QueryContext(ctx, query, carID)
 	if err != nil {
 		log.Printf("List schedules db execution failed: %v", err)
 		return nil, err
@@ -200,7 +208,7 @@ func (h *CarHandlers) listSchedules(ctx context.Context) ([]MaintenanceSchedule,
 	defer rows.Close()
 	for rows.Next() {
 		var s MaintenanceSchedule
-		err := rows.Scan(&s.ID, &s.Name, &s.ServiceType, &s.IntervalKm, &s.IntervalMonths, &s.Enabled,
+		err := rows.Scan(&s.ID, &s.CarID, &s.Name, &s.ServiceType, &s.IntervalKm, &s.IntervalMonths, &s.Enabled,
 						&s.Notes)
 		if err != nil {
 			log.Printf("Failed to scan maintenance schedule rows: %v", err)
@@ -215,9 +223,8 @@ func (h *CarHandlers) listSchedules(ctx context.Context) ([]MaintenanceSchedule,
 	return schedule, err
 }
 
-func (h *CarHandlers) listServices(ctx context.Context) ([]ServiceLog, error) {
+func (h *CarHandlers) listServices(ctx context.Context, carID int) ([]ServiceLog, error) {
 	var serviceLog []ServiceLog
-	id := 1	// In the future make this as a param in getCar function (only one car right now)
 	query := `
 		SELECT
 			id, service_type, date, odometer, COALESCE(cost_cents, 0), COALESCE(vendor, ''),
@@ -226,7 +233,7 @@ func (h *CarHandlers) listServices(ctx context.Context) ([]ServiceLog, error) {
 		WHERE car_id = ?
 		ORDER BY date DESC, id DESC
 	`
-	rows, err := h.db.QueryContext(ctx, query, id)
+	rows, err := h.db.QueryContext(ctx, query, carID)
 	if err != nil {
 		log.Printf("List service db execution failed: %v", err)
 		return nil, err
@@ -249,7 +256,7 @@ func (h *CarHandlers) listServices(ctx context.Context) ([]ServiceLog, error) {
 	return serviceLog, err
 }
 
-func (h *CarHandlers) getCar(ctx context.Context, id int) (Car, error) {
+func (h *CarHandlers) getCar(ctx context.Context, carID int) (Car, error) {
 	var car Car
 	query := `
 		SELECT 
@@ -261,7 +268,7 @@ func (h *CarHandlers) getCar(ctx context.Context, id int) (Car, error) {
 		FROM car 
 		WHERE id = ?
 	`
-	err := h.db.QueryRowContext(ctx, query, id).Scan(
+	err := h.db.QueryRowContext(ctx, query, carID).Scan(
 		&car.ID, &car.Make, &car.Model, &car.Year, &car.Trim, &car.Vin,
 		&car.LicensePlate, &car.Color, &car.PurchaseDate, &car.PurchasePriceCents,
 		&car.PurchaseOdometer,&car.OilType, &car.OilCapacityL, &car.InsuranceProvider, 
@@ -357,6 +364,7 @@ func (h *CarHandlers) deleteService(ctx context.Context, id int) error {
 }
 
 func (h *CarHandlers) CreateService(w http.ResponseWriter, r *http.Request) {
+	carID := getCarID(r)
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Failed to parse form", http.StatusBadRequest)
 		return
@@ -366,12 +374,6 @@ func (h *CarHandlers) CreateService(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid ID", http.StatusBadRequest)
 		return
 	}
-	/* TODO Only one car right now, implement later
-	carID, err := formInt(r, "car_id")
-	if err != nil {
-		http.Error(w, "Invalid car ID", http.StatusBadRequest)
-		return
-	}*/
 	odometer, err := formInt(r, "odometer")
 	if err != nil {
 		http.Error(w, "Invalid odometer", http.StatusBadRequest)
@@ -384,7 +386,7 @@ func (h *CarHandlers) CreateService(w http.ResponseWriter, r *http.Request) {
 	}
 	serviceLog := ServiceLog {
 		ID: id,
-		CarID: 1, // TODO: Implement way for multiple cars
+		CarID: carID,
 		ServiceType: r.FormValue("service_type"),
 		Date: r.FormValue("date"),
 		Odometer: odometer,
@@ -397,10 +399,11 @@ func (h *CarHandlers) CreateService(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to create service in database", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/car/service", http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/car/service?car=%d", carID), http.StatusSeeOther)
 }
 
 func (h *CarHandlers) DeleteService(w http.ResponseWriter, r *http.Request) {
+	carID := getCarID(r)
 	id, err := strconv.Atoi(r.PathValue("id"))
 	if err != nil {
 		http.Error(w, "Invalid id format", http.StatusBadRequest)
@@ -411,7 +414,7 @@ func (h *CarHandlers) DeleteService(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to delete service in database", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/car/service", http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/car/service?car=%d", carID), http.StatusSeeOther)
 }
 
 // Scheduled Maintenance functions
@@ -462,6 +465,7 @@ func (h *CarHandlers) deleteSchedule(ctx context.Context, id int) error {
 }
 
 func (h *CarHandlers) CreateSchedule(w http.ResponseWriter, r *http.Request) {
+	carID := getCarID(r)
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Failed to parse form", http.StatusBadRequest)
 		return
@@ -471,12 +475,6 @@ func (h *CarHandlers) CreateSchedule(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid ID", http.StatusBadRequest)
 		return
 	}
-	/* TODO Only one car right now, implement later
-	carID, err := formInt(r, "car_id")
-	if err != nil {
-		http.Error(w, "Invalid car ID", http.StatusBadRequest)
-		return
-	}*/
 	intervalKm, err := formInt(r, "interval_km")
 	if err != nil {
 		http.Error(w, "Invalid inteval km", http.StatusBadRequest)
@@ -489,7 +487,7 @@ func (h *CarHandlers) CreateSchedule(w http.ResponseWriter, r *http.Request) {
 	}
 	schedule := MaintenanceSchedule {
 		ID: id,
-		CarID: 1, // TODO: Implement way for multiple cars
+		CarID: carID,
 		Name: r.FormValue("name"),
 		ServiceType: r.FormValue("service_type"),
 		IntervalKm:	intervalKm, 
@@ -502,10 +500,11 @@ func (h *CarHandlers) CreateSchedule(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to create schedule in database", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/car/schedule", http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/car/schedule?car=%d", carID), http.StatusSeeOther)
 }
 
 func (h *CarHandlers) DeleteSchedule(w http.ResponseWriter, r *http.Request) {
+	carID := getCarID(r)
 	id, err := strconv.Atoi(r.PathValue("id"))
 	if err != nil {
 		http.Error(w, "Invalid id format", http.StatusBadRequest)
@@ -516,26 +515,26 @@ func (h *CarHandlers) DeleteSchedule(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to delete schedule in database", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/car/schedule", http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/car/schedule?car=%d", carID), http.StatusSeeOther)
 }
 
 // PARTS FUNCTIONS:
 func (h *CarHandlers) PartIndex(w http.ResponseWriter, r *http.Request) {
-	partList, err := h.listParts(r.Context())
+	carID := getCarID(r)
+	partList, err := h.listParts(r.Context(), carID)
 	if err != nil {
 		log.Printf("get parts: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-	data := partsPage{ Title: "Parts", Part: partList}
+	data := partsPage{ Title: "Parts", Part: partList, CarID: carID }
 	if err := h.tpls["parts"].ExecuteTemplate(w, "base", data); err != nil {
 		log.Printf("parts template execution failed: %v", err)
 	}
 }
 
-func (h *CarHandlers) listParts(ctx context.Context) ([]Part, error) {
+func (h *CarHandlers) listParts(ctx context.Context, carID int) ([]Part, error) {
 	var partList []Part
-	id := 1
 	query := `
 		SELECT
 			id, name, category, COALESCE(description, ''), COALESCE(cost_cents, 0),
@@ -544,7 +543,7 @@ func (h *CarHandlers) listParts(ctx context.Context) ([]Part, error) {
 		WHERE car_id = ?
 		ORDER BY name
 	`
-	rows, err := h.db.QueryContext(ctx, query, id)
+	rows, err := h.db.QueryContext(ctx, query, carID)
 	if err != nil {
 		log.Printf("List parts db execution failed: %v", err)
 		return nil, err
@@ -614,6 +613,7 @@ func (h *CarHandlers) deletePart(ctx context.Context, id int) error {
 }
 
 func (h *CarHandlers) CreatePart(w http.ResponseWriter, r *http.Request) {
+	carID := getCarID(r)
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Failed to parse form", http.StatusBadRequest)
 		return
@@ -623,12 +623,6 @@ func (h *CarHandlers) CreatePart(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid ID", http.StatusBadRequest)
 		return
 	}
-	/* TODO Only one car right now, implement later
-	carID, err := formInt(r, "car_id")
-	if err != nil {
-		http.Error(w, "Invalid car ID", http.StatusBadRequest)
-		return
-	}*/
 	costCents, err := formInt(r, "cost_cents")
 	if err != nil {
 		http.Error(w, "Invalid cost cents", http.StatusBadRequest)
@@ -636,7 +630,7 @@ func (h *CarHandlers) CreatePart(w http.ResponseWriter, r *http.Request) {
 	}
 	part := Part {
 		ID: id,
-		CarID: 1, // TODO: Implement way for multiple cars
+		CarID: carID,
 		Name: r.FormValue("name"),
 		Category: r.FormValue("category"),
 		Description: r.FormValue("description"),
@@ -650,10 +644,11 @@ func (h *CarHandlers) CreatePart(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to create part in database", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/car/parts", http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/car/parts?car=%d", carID), http.StatusSeeOther)
 }
 
 func (h *CarHandlers) DeletePart(w http.ResponseWriter, r *http.Request) {
+	carID := getCarID(r)
 	id, err := strconv.Atoi(r.PathValue("id"))
 	if err != nil {
 		http.Error(w, "Invalid id format", http.StatusBadRequest)
@@ -664,59 +659,26 @@ func (h *CarHandlers) DeletePart(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to delete part in database", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/car/parts", http.StatusSeeOther)
-}
-
-// Claculations and Helpers
-func (h *CarHandlers) getOdometer(ctx context.Context, carId int) (int, error) {
-	var odometer int
-	query := `
-			SELECT COALESCE(MAX(odometer), 0) FROM (
-			  SELECT odometer FROM service_log WHERE car_id = ?
-			  UNION ALL SELECT odometer FROM fuel_log WHERE car_id = ?
-			  UNION ALL SELECT odometer FROM odometer_reading WHERE car_id = ?
-			)
-		`
-	err := h.db.QueryRowContext(ctx, query, carId, carId, carId).Scan(&odometer)
-	if err != nil {
-		return 0, err
-	}
-	return odometer, err
-}
-// Parse integers from form data
-func formInt(r *http.Request, name string) (int, error) {
-	v := r.FormValue(name)
-	if v == "" {
-		return 0, nil
-	}
-	return strconv.Atoi(v)
-}
-// Parse floats from form data
-func formFloat(r *http.Request, name string) (float64, error) {
-	v := r.FormValue(name)
-	if v == "" {
-		return 0.0, nil
-	}
-	return strconv.ParseFloat(v, 64)
+	http.Redirect(w, r, fmt.Sprintf("/car/parts?car=%d", carID), http.StatusSeeOther)
 }
 
 // Fuel functions
 func (h *CarHandlers) FuelIndex(w http.ResponseWriter, r *http.Request) {
-	fuelLogs, err := h.listFuelLogs(r.Context())
+	carID := getCarID(r)
+	fuelLogs, err := h.listFuelLogs(r.Context(), carID)
 	if err != nil {
 		log.Printf("get fuel logs: %v", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-	data := fuelPage{ Title: "Fuel", FuelLogs: fuelLogs}
+	data := fuelPage{ Title: "Fuel", FuelLogs: fuelLogs, CarID: carID }
 	if err := h.tpls["fuel"].ExecuteTemplate(w, "base", data); err != nil {
 		log.Printf("fuel template execution failed: %v", err)
 	}
 }
 
-func (h *CarHandlers) listFuelLogs(ctx context.Context) ([]FuelLog, error) {
+func (h *CarHandlers) listFuelLogs(ctx context.Context, carID int) ([]FuelLog, error) {
 	var fuelLogs []FuelLog
-	id := 1
 	query := `
 		SELECT
 			id, date, odometer, litres, COALESCE(price_per_litre_cents, 0), COALESCE(total_cents, 0),
@@ -725,7 +687,7 @@ func (h *CarHandlers) listFuelLogs(ctx context.Context) ([]FuelLog, error) {
 		WHERE car_id = ?
 		ORDER BY date DESC
 	`
-	rows, err := h.db.QueryContext(ctx, query, id)
+	rows, err := h.db.QueryContext(ctx, query, carID)
 	if err != nil {
 		log.Printf("List fuel logs db execution failed: %v", err)
 		return nil, err
@@ -795,6 +757,7 @@ func (h *CarHandlers) deleteFuelLog(ctx context.Context, id int) error {
 }
 
 func (h *CarHandlers) CreateFuelLog(w http.ResponseWriter, r *http.Request) {
+	carID := getCarID(r)
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Failed to parse form", http.StatusBadRequest)
 		return
@@ -809,12 +772,6 @@ func (h *CarHandlers) CreateFuelLog(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid odometer", http.StatusBadRequest)
 		return
 	}
-	/* TODO Only one car right now, implement later
-	carID, err := formInt(r, "car_id")
-	if err != nil {
-		http.Error(w, "Invalid car ID", http.StatusBadRequest)
-		return
-	}*/
 	litres, err := formFloat(r, "litres")
 	if err != nil {
 		http.Error(w, "Invalid litres", http.StatusBadRequest)
@@ -832,7 +789,7 @@ func (h *CarHandlers) CreateFuelLog(w http.ResponseWriter, r *http.Request) {
 	}
 	fuelLog := FuelLog {
 		ID: id,
-		CarID: 1, // TODO: Implement way for multiple cars
+		CarID: carID,
 		Date: r.FormValue("date"),
 		Odometer: odometer,
 		Litres: litres,
@@ -847,10 +804,11 @@ func (h *CarHandlers) CreateFuelLog(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to create fuel log in database", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/car/fuel", http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/car/fuel?car=%d", carID), http.StatusSeeOther)
 }
 
 func (h *CarHandlers) DeleteFuelLog(w http.ResponseWriter, r *http.Request) {
+	carID := getCarID(r)
 	id, err := strconv.Atoi(r.PathValue("id"))
 	if err != nil {
 		http.Error(w, "Invalid id format", http.StatusBadRequest)
@@ -861,9 +819,8 @@ func (h *CarHandlers) DeleteFuelLog(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to delete fuel log in database", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/car/fuel", http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/car/fuel?car=%d", carID), http.StatusSeeOther)
 }
-
 
 // Car functions
 func (h *CarHandlers) saveCar(ctx context.Context, car Car) (int, error) {
@@ -935,27 +892,27 @@ func (h *CarHandlers) SaveCar(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := formInt(r, "id")
 	if err != nil {
-		http.Error(w, "Invalid odometer", http.StatusBadRequest)
+		http.Error(w, "Invalid car id", http.StatusBadRequest)
 		return
 	}
 	year, err := formInt(r, "year")
 	if err != nil {
-		http.Error(w, "Invalid odometer", http.StatusBadRequest)
+		http.Error(w, "Invalid year", http.StatusBadRequest)
 		return
 	}
 	purchasePriceCents, err := formInt(r, "purchase_price_cents")
 	if err != nil {
-		http.Error(w, "Invalid litres", http.StatusBadRequest)
+		http.Error(w, "Invalid purchase price cents", http.StatusBadRequest)
 		return
 	}
 	purchaseOdometer, err := formInt(r, "purchase_odometer")
 	if err != nil {
-		http.Error(w, "Invalid price per litre cents", http.StatusBadRequest)
+		http.Error(w, "Invalid purchase odometer", http.StatusBadRequest)
 		return
 	}
 	oilCapacityL, err := formFloat(r, "oil_capacity_l")
 	if err != nil {
-		http.Error(w, "Invalid total cents", http.StatusBadRequest)
+		http.Error(w, "Invalid oil capacity in L", http.StatusBadRequest)
 		return
 	}
 	car := Car {
@@ -978,13 +935,13 @@ func (h *CarHandlers) SaveCar(w http.ResponseWriter, r *http.Request) {
 		RegistrationExp: r.FormValue("registration_expires"),
 		Notes: r.FormValue("notes"),
 	}
-	carID, err := h.saveCar(r.Context(), car); // replace _ with id because it returns the car at which you should be viewing
+	newCarID, err := h.saveCar(r.Context(), car)
 	if err != nil {
-		log.Printf("failed to save car id=%d: %v", carID, err)
+		log.Printf("failed to save car id=%d: %v", newCarID, err)
 		http.Error(w, "Failed to create car in database", http.StatusInternalServerError) // update link when car id is returned
 		return
 	}
-	http.Redirect(w, r, "/car", http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("/car?car=%d", newCarID), http.StatusSeeOther)
 }
 
 func (h *CarHandlers) DeleteCar(w http.ResponseWriter, r *http.Request) {
@@ -999,4 +956,49 @@ func (h *CarHandlers) DeleteCar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/car", http.StatusSeeOther)
+}
+
+// Claculations and Helpers
+func (h *CarHandlers) getOdometer(ctx context.Context, carID int) (int, error) {
+	var odometer int
+	query := `
+			SELECT COALESCE(MAX(odometer), 0) FROM (
+			  SELECT odometer FROM service_log WHERE car_id = ?
+			  UNION ALL SELECT odometer FROM fuel_log WHERE car_id = ?
+			  UNION ALL SELECT odometer FROM odometer_reading WHERE car_id = ?
+			)
+		`
+	err := h.db.QueryRowContext(ctx, query, carID, carID, carID).Scan(&odometer)
+	if err != nil {
+		return 0, err
+	}
+	return odometer, err
+}
+// Get current car
+func getCarID(r *http.Request) int { // TODO: if car 1 dosent exist default to first car in db instead (query)
+	carStr := r.URL.Query().Get("car")
+	if carStr == "" {
+		return 1
+	}
+	carID, err := strconv.Atoi(carStr)
+	if err != nil || carID <= 0 {
+		return 1
+	}
+	return carID
+}
+// Parse integers from form data
+func formInt(r *http.Request, name string) (int, error) {
+	v := r.FormValue(name)
+	if v == "" {
+		return 0, nil
+	}
+	return strconv.Atoi(v)
+}
+// Parse floats from form data
+func formFloat(r *http.Request, name string) (float64, error) {
+	v := r.FormValue(name)
+	if v == "" {
+		return 0.0, nil
+	}
+	return strconv.ParseFloat(v, 64)
 }
