@@ -1,16 +1,18 @@
 # life_notes
 
 ## Usage
-This application is essentially a notes app with logic.
-It's usefulness comes from being personalized and better organized then a regular notepad.
-such as a car note where it keeps track of dates, costs, etc and calculates them for you.
+This application in a nutshell is a notes app with logic.
+It's usefulness comes from being personalized and better organized then a regular notepad or sheet.
+For example a car note where it keeps track of dates, costs, etc and calculates them for you.
 All you need to do is log the services and whatnot and it gets posted into the ledger (DB).
 It relies on consistant updates for acurate data and calculations, but the goal is for a beautiful
 ledger of all the logs and history of the specific note.
 
 Single binary packaged with a web UI. Creates a DB file if there isint one.
 
-## How the program works
+## For download & setup instructions please refer to setup.md
+
+## How the app works
 - main.go
 This is the entry to the program where it first opens/initializes the DB, parses the pages and registers
 the endpoints for the pages. Then finally serves on localhost. It contains some fail and close counter measures.
@@ -29,19 +31,19 @@ essentially and fills the template's data holes.
 ## Bugs/ToDo
 - Pretty up and design baseplate & home pages
 - Implement the rest of car
-    - Design UI
+    - Design the UI
     - Implement the rest of the functionality interacting with all car tables in DB
         - Such as warranty logs and more?
     - Proper error handling, pass an error on page struct
     - Summary of costs
     - Auto convert from frontend dollar to cent to make it less complicated
     - Auto fill values or at least show what the previous one was
-
 - Implement other notes
     - Finance (spending, debts, payroll)
     - Possible course notes? (i write on paper usually so maybe write & store images?)
     - Shopping list ?
-
 ## Features/Extra
 - In main page or something, show a calendar of current month and upcoming dates.
 - One day when the server node program is fully implemented, see about syncing the DB there? (Concept project)
+- Refactor all duplicated functions such as Delete___ into generics. Something to think about
+since the notes file is getting very large
