@@ -9,6 +9,7 @@ import (
 	"time"
 	"strconv"
 	"fmt"
+	"errors"
 )
 
 type CarHandlers struct {
@@ -191,7 +192,6 @@ func (h *CarHandlers) ScheduleIndex(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CarHandlers) listSchedules(ctx context.Context, carID int) ([]MaintenanceSchedule, error) {
-	var schedule []MaintenanceSchedule
 	query := `
 		SELECT
 			id, car_id, name, service_type, COALESCE(interval_km, 0),
@@ -200,31 +200,44 @@ func (h *CarHandlers) listSchedules(ctx context.Context, carID int) ([]Maintenan
 		WHERE car_id = ?
 		ORDER BY name
 	`
-	rows, err := h.db.QueryContext(ctx, query, carID)
+	return genericList[MaintenanceSchedule](ctx, h.db, query, carID)
+}
+
+func genericList[T any](ctx context.Context, db *sql.DB, query string, args ...any,) ([]T, error) {
+	var items []T
+	rows, err := db.QueryContext(ctx, query)
 	if err != nil {
-		log.Printf("List schedules db execution failed: %v", err)
+		log.Printf("db execution failed in genericListCar: %v", err)
 		return nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var s MaintenanceSchedule
-		err := rows.Scan(&s.ID, &s.CarID, &s.Name, &s.ServiceType, &s.IntervalKm, &s.IntervalMonths, &s.Enabled,
-						&s.Notes)
+		var item T
+		switch v := any(&item).(type) {
+		case *MaintenanceSchedule:
+			err = rows.Scan(&v.ID, &v.CarID, &v.Name, &v.ServiceType, &v.IntervalKm, &v.IntervalMonths,
+						&v.Enabled, &v.Notes)
+		case *ServiceLog:
+			err = rows.Scan(&v.ID, &v.ServiceType, &v.Date, &v.Odometer, &v.CostCents, &v.Vendor,
+						&v.Notes, &v.CreatedAt)
+		default:
+			err = errors.New("unsupported type %T in genericListCar")
+
+		}
 		if err != nil {
-			log.Printf("Failed to scan maintenance schedule rows: %v", err)
+			log.Printf("Failed to scan %T rows: %v", item, err)
 			return nil, err
 		}
-		schedule = append(schedule, s)
+		items = append(items, item)
 	}
 	if err = rows.Err(); err != nil {
 		log.Printf("Row errors: %v", err)
 		return nil, err
 	}
-	return schedule, err
+	return items, nil
 }
 
 func (h *CarHandlers) listServices(ctx context.Context, carID int) ([]ServiceLog, error) {
-	var serviceLog []ServiceLog
 	query := `
 		SELECT
 			id, service_type, date, odometer, COALESCE(cost_cents, 0), COALESCE(vendor, ''),
@@ -233,27 +246,7 @@ func (h *CarHandlers) listServices(ctx context.Context, carID int) ([]ServiceLog
 		WHERE car_id = ?
 		ORDER BY date DESC, id DESC
 	`
-	rows, err := h.db.QueryContext(ctx, query, carID)
-	if err != nil {
-		log.Printf("List service db execution failed: %v", err)
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var s ServiceLog
-		err := rows.Scan(&s.ID, &s.ServiceType, &s.Date, &s.Odometer, &s.CostCents, &s.Vendor,
-						&s.Notes, &s.CreatedAt)
-		if err != nil {
-			log.Printf("Failed to scan service log rows: %v", err)
-			return nil, err
-		}
-		serviceLog = append(serviceLog, s)
-	}
-	if err = rows.Err(); err != nil {
-		log.Printf("Row errors: %v", err)
-		return nil, err
-	}
-	return serviceLog, err
+	return genericList[ServiceLog](ctx, h.db, query, carID)
 }
 
 func (h *CarHandlers) getCar(ctx context.Context, carID int) (Car, error) {
@@ -279,7 +272,6 @@ func (h *CarHandlers) getCar(ctx context.Context, carID int) (Car, error) {
 }
 
 func (h *CarHandlers) listCars(ctx context.Context) ([]Car, error) {
-	var cars []Car
 	query := `
 		SELECT 
 			id, make, model, year, trim, vin, license_plate, color, 
@@ -289,32 +281,7 @@ func (h *CarHandlers) listCars(ctx context.Context) ([]Car, error) {
 			notes, updated_at, created_at
 		FROM car 
 	`
-	rows, err := h.db.QueryContext(ctx, query)
-	if err != nil {
-		log.Printf("List service db execution failed: %v", err)
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var car Car
-		err := rows.Scan(
-			&car.ID, &car.Make, &car.Model, &car.Year, &car.Trim, &car.Vin,
-			&car.LicensePlate, &car.Color, &car.PurchaseDate, &car.PurchasePriceCents,
-			&car.PurchaseOdometer,&car.OilType, &car.OilCapacityL, &car.InsuranceProvider, 
-			&car.InsurancePolicyNumber, &car.InsuranceExp, &car.RegistrationExp,&car.Notes,
-			&car.UpdatedAt, &car.CreatedAt,
-		)
-		if err != nil {
-			log.Printf("Failed to scan service log rows: %v", err)
-			return nil, err
-		}
-		cars = append(cars, car)
-	}
-	if err = rows.Err(); err != nil {
-		log.Printf("Row errors: %v", err)
-		return nil, err
-	}
-	return cars, err
+	return genericList[Car](ctx, h.db, query)
 }
 
 func (h *CarHandlers) saveService(ctx context.Context, service ServiceLog) error {
@@ -534,7 +501,6 @@ func (h *CarHandlers) PartIndex(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CarHandlers) listParts(ctx context.Context, carID int) ([]Part, error) {
-	var partList []Part
 	query := `
 		SELECT
 			id, name, category, COALESCE(description, ''), COALESCE(cost_cents, 0),
@@ -543,27 +509,7 @@ func (h *CarHandlers) listParts(ctx context.Context, carID int) ([]Part, error) 
 		WHERE car_id = ?
 		ORDER BY name
 	`
-	rows, err := h.db.QueryContext(ctx, query, carID)
-	if err != nil {
-		log.Printf("List parts db execution failed: %v", err)
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var p Part
-		err := rows.Scan(&p.ID, &p.Name, &p.Category, &p.Description, &p.CostCents, &p.PurchaseDate,
-						&p.Status, &p.Notes, &p.CreatedAt)
-		if err != nil {
-			log.Printf("Failed to scan part rows: %v", err)
-			return nil, err
-		}
-		partList = append(partList, p)
-	}
-	if err = rows.Err(); err != nil {
-		log.Printf("Row errors: %v", err)
-		return nil, err
-	}
-	return partList, err
+	return genericList[Part](ctx, h.db, query, carID)
 }
 
 func (h *CarHandlers) savePart(ctx context.Context, part Part) error {
@@ -678,7 +624,6 @@ func (h *CarHandlers) FuelIndex(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *CarHandlers) listFuelLogs(ctx context.Context, carID int) ([]FuelLog, error) {
-	var fuelLogs []FuelLog
 	query := `
 		SELECT
 			id, date, odometer, litres, COALESCE(price_per_litre_cents, 0), COALESCE(total_cents, 0),
@@ -687,27 +632,7 @@ func (h *CarHandlers) listFuelLogs(ctx context.Context, carID int) ([]FuelLog, e
 		WHERE car_id = ?
 		ORDER BY date DESC
 	`
-	rows, err := h.db.QueryContext(ctx, query, carID)
-	if err != nil {
-		log.Printf("List fuel logs db execution failed: %v", err)
-		return nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var f FuelLog
-		err := rows.Scan(&f.ID, &f.Date, &f.Odometer, &f.Litres, &f.PricePerLitreCents, &f.TotalCents,
-						&f.Station, &f.IsFullTank, &f.Notes, &f.CreatedAt)
-		if err != nil {
-			log.Printf("Failed to scan fuel log rows: %v", err)
-			return nil, err
-		}
-		fuelLogs = append(fuelLogs, f)
-	}
-	if err = rows.Err(); err != nil {
-		log.Printf("Row errors: %v", err)
-		return nil, err
-	}
-	return fuelLogs, err
+	return genericList[FuelLog](ctx, h.db, query, carID)
 }
 
 func (h *CarHandlers) saveFuelLog(ctx context.Context, f FuelLog) error {
