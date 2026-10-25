@@ -9,7 +9,6 @@ import (
 	"time"
 	"strconv"
 	"fmt"
-	"errors"
 )
 
 type CarHandlers struct {
@@ -191,6 +190,7 @@ func (h *CarHandlers) ScheduleIndex(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// Kept individual lists for future ref if you want a specific select and dont want to access it through index
 func (h *CarHandlers) listSchedules(ctx context.Context, carID int) ([]MaintenanceSchedule, error) {
 	query := `
 		SELECT
@@ -203,9 +203,12 @@ func (h *CarHandlers) listSchedules(ctx context.Context, carID int) ([]Maintenan
 	return genericList[MaintenanceSchedule](ctx, h.db, query, carID)
 }
 
+// Something to consider is you can pass scan into the params from a list function to remove the need of the case.
+// Would be useful to keep query and scan params together.
+// TODO might be wise to do this if this note grows a lot or even if other notes use this func
 func genericList[T any](ctx context.Context, db *sql.DB, query string, args ...any,) ([]T, error) {
 	var items []T
-	rows, err := db.QueryContext(ctx, query)
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		log.Printf("db execution failed in genericListCar: %v", err)
 		return nil, err
@@ -220,9 +223,20 @@ func genericList[T any](ctx context.Context, db *sql.DB, query string, args ...a
 		case *ServiceLog:
 			err = rows.Scan(&v.ID, &v.ServiceType, &v.Date, &v.Odometer, &v.CostCents, &v.Vendor,
 						&v.Notes, &v.CreatedAt)
+		case *Part:
+			err = rows.Scan(&v.ID, &v.Name, &v.Category, &v.Description, &v.CostCents, &v.PurchaseDate,
+						&v.Status, &v.Notes, &v.CreatedAt)
+		case *FuelLog:
+			err = rows.Scan(&v.ID, &v.Date, &v.Odometer, &v.Litres, &v.PricePerLitreCents, &v.TotalCents,
+						&v.Station, &v.IsFullTank, &v.Notes, &v.CreatedAt)
+		case *Car:
+			err = rows.Scan(&v.ID, &v.Make, &v.Model, &v.Year, &v.Trim, &v.Vin,
+						&v.LicensePlate, &v.Color, &v.PurchaseDate, &v.PurchasePriceCents,
+						&v.PurchaseOdometer,&v.OilType, &v.OilCapacityL, &v.InsuranceProvider, 
+						&v.InsurancePolicyNumber, &v.InsuranceExp, &v.RegistrationExp,&v.Notes,
+						&v.UpdatedAt, &v.CreatedAt)
 		default:
-			err = errors.New("unsupported type %T in genericListCar")
-
+			err = fmt.Errorf("unsupported type %T in genericListCar", item)
 		}
 		if err != nil {
 			log.Printf("Failed to scan %T rows: %v", item, err)
