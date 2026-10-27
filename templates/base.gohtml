@@ -3,11 +3,30 @@
 <html>
 <head>
     <title>{{.Title}} - life_notes</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@300;400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
-    <nav><a href="/">Home</a> <a href="/car">Car</a></nav>
-    <main>{{template "content" .}}</main>
+    <div class="app-layout">
+        
+        <!-- Left dropbar -->
+        <div class="sidebar">
+            <button class="nav-toggle" aria-expanded="true">=</button>
+            <nav class="nav-list">
+                <a href="/" class="nav-link {{if eq "Home" $.Title}}is-active{{end}}">Home</a>
+                {{range .NavItems}}
+                <a href="{{.URL}}" class="nav-link {{if eq .Label $.Title}}is-active{{end}}">{{.Label}}</a>
+                {{end}}
+            </nav>
+        </div>
+
+        <!-- Right main content -->
+        <div class="main-content">
+        <nav><a href="/">life_notes</a></nav>
+        <main>{{template "content" .}}</main>
+        </div>
+
+    </div>
 </body>
 </html>
 {{end}}

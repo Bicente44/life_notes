@@ -30,6 +30,16 @@ const (
 	dbFile = "file:life_notes.db?_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)"
 )
 
+type homePage struct {
+	Title    string
+	NavItems []notes.NavItem
+}
+
+var homeNav = []notes.NavItem{
+	{Label: "Car", URL: "/car"},
+	// {Label: "Finance", URL: "/finance"},
+}
+
 func main() {
 	if err := run(); err != nil {
 		log.Fatal(err)
@@ -71,7 +81,7 @@ func run() error {
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(staticSub)))
 	
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
-		data := struct{ Title string }{Title: "Home"}
+		data := homePage{ Title: "Home", NavItems: homeNav, }
 		if err := templates["home"].ExecuteTemplate(w, "base", data); err != nil {
 			log.Printf("home template failed: %v", err)
 		}

@@ -20,6 +20,7 @@ type carPage struct {
 	Title string
 	Car	Car
 	CarID int
+	NavItems []NavItem
 	// Error
 }
 
@@ -27,6 +28,7 @@ type servicePage struct {
 	Title string
 	Services []ServiceLog
 	CarID int
+	NavItems []NavItem
 	// Error
 }
 
@@ -34,6 +36,7 @@ type schedulePage struct {
 	Title string
 	Schedule []MaintenanceSchedule
 	CarID int
+	NavItems []NavItem
 	// Error
 }
 
@@ -41,12 +44,14 @@ type partsPage struct {
 	Title string
 	Part []Part
 	CarID int
+	NavItems []NavItem
 }
 
 type fuelPage struct {
 	Title string
 	FuelLogs []FuelLog
 	CarID int
+	NavItems []NavItem
 }
 
 type Car struct {
@@ -122,6 +127,19 @@ type FuelLog struct {
 	CreatedAt string
 }
 
+type NavItem struct {
+	Label string
+	URL   string
+}
+
+var carNav = []NavItem{
+	{"Car", "/car"},
+	{"Services", "/car/service"},
+	{"Maintenence Schedule", "/car/schedule"},
+	{"Parts", "/car/parts"},
+	{"Fuel", "/car/fuel"},
+}
+
 func NewCarHandlers(db *sql.DB, tpls map[string]*template.Template) *CarHandlers {
 	return &CarHandlers{db: db, tpls: tpls}
 }
@@ -156,7 +174,7 @@ func (h *CarHandlers) Index(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-	data := carPage{ Title: "Car", Car: car, CarID: carID }
+	data := carPage{ Title: "Car", Car: car, CarID: carID, NavItems: carNav }
 	if err := h.tpls["car"].ExecuteTemplate(w, "base", data); err != nil {
 		log.Printf("car template execution failed: %v", err)
 	}
@@ -170,7 +188,7 @@ func (h *CarHandlers) ServiceIndex(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-	data := servicePage{ Title: "Services", Services: serviceLogs, CarID: carID }
+	data := servicePage{ Title: "Services", Services: serviceLogs, CarID: carID, NavItems: carNav }
 	if err := h.tpls["service"].ExecuteTemplate(w, "base", data); err != nil {
 		log.Printf("service template execution failed: %v", err)
 	}
@@ -184,7 +202,7 @@ func (h *CarHandlers) ScheduleIndex(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-	data := schedulePage{ Title: "Maintenence Schedule", Schedule: maintenanceSchedule, CarID: carID }
+	data := schedulePage{ Title: "Maintenence Schedule", Schedule: maintenanceSchedule, CarID: carID, NavItems: carNav }
 	if err := h.tpls["schedule"].ExecuteTemplate(w, "base", data); err != nil {
 		log.Printf("schedule template execution failed: %v", err)
 	}
@@ -508,7 +526,7 @@ func (h *CarHandlers) PartIndex(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-	data := partsPage{ Title: "Parts", Part: partList, CarID: carID }
+	data := partsPage{ Title: "Parts", Part: partList, CarID: carID, NavItems: carNav }
 	if err := h.tpls["parts"].ExecuteTemplate(w, "base", data); err != nil {
 		log.Printf("parts template execution failed: %v", err)
 	}
@@ -631,7 +649,7 @@ func (h *CarHandlers) FuelIndex(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-	data := fuelPage{ Title: "Fuel", FuelLogs: fuelLogs, CarID: carID }
+	data := fuelPage{ Title: "Fuel", FuelLogs: fuelLogs, CarID: carID, NavItems: carNav }
 	if err := h.tpls["fuel"].ExecuteTemplate(w, "base", data); err != nil {
 		log.Printf("fuel template execution failed: %v", err)
 	}

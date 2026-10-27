@@ -1,0 +1,88 @@
+
+/* 
+ * Dark grey everything #2e2e2e
+ * Blue accents         #3f8cbf
+ *
+ */
+
+:root {
+    --bg: white;
+    --fg: #2e2e2e;
+    --muted: #767676;
+    --border: #e0e0e0;
+    --accent: #3f8cbf;
+    --nav-height: 56px;
+    --sidebar-collapsed: 48px;
+    --font-body: 'Roboto Slab', Georgia, "Times New Roman", serif;
+    --space: 8px;
+}
+
+body {
+    padding-top: var(--nav-height, 56px);
+    margin: 0;
+    font-family: var(--font-body);
+    color: var(--fg);
+    background: var(--bg);
+}
+
+.app-layout {
+    display: flex;
+    max-width: 850px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+.sidebar {
+    flex: 0 0 10%;
+    padding: var(--space);
+    box-sizing: border-box;
+    overflow: hidden;
+    transition: flex-basis 0.2s;
+}
+
+.sidebar.collapsed {
+    flex: 0 0 var(--sidebar-collapsed);
+}
+
+.sidebar.collapsed .nav-list {
+    display: none;
+}
+
+.main-content {
+    flex: 1;
+    min-width: 0;
+    padding: var(--space);
+    box-sizing: border-box;
+}
+
+.nav-toggle {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font: inherit;
+    padding: var(--space);
+    color: var(--fg);
+}
+
+.nav-list {
+    display: flex;
+    flex-direction: column;
+    gap: calc(var(--space) / 2);
+    margin-top: var(--space);
+}
+
+.nav-link {
+    color: var(--fg);
+    text-decoration: none;
+    padding: calc(var(--space) / 2) var(--space);
+    border-radius: 4px;
+}
+
+.nav-link:hover {
+    background: var(--border);
+}
+
+.nav-link.is-active {
+    color: var(--accent);
+    font-weight: 500;
+}
