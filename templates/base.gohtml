@@ -3,6 +3,7 @@
 <html>
 <head>
     <title>{{.Title}} - life_notes</title>
+    <link rel="icon" type="image/webp" href="/static/ln_site_icon.webp">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link href="https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@300;400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/app.css">
@@ -24,7 +25,9 @@
         <div class="main-content">
             <nav class="topbar">
                 <button class="nav-toggle" aria-expanded="true">=</button>
-                <a href="/">life_notes</a>
+                <a href="/">
+                    <img src="/static/ln_site_banner.webp" alt="Life_Notes Logo">
+                </a>
             </nav>
             <main>{{template "content" .}}</main>
         </div>

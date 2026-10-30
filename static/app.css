@@ -27,6 +27,7 @@ body {
     display: flex;
     max-width: 850px;
     margin: 0 auto;
+    padding-top: 8px;
 }
 
 
@@ -60,6 +61,13 @@ body.nav-collapsed .sidebar .nav-list {
     align-items: center;
     gap: var(--space);
     height: var(--nav-height);
+}
+
+.topbar img {
+    height: 74px;
+    width: auto;
+    border-radius: 6px;
+    display: block;
 }
 
 .nav-toggle {
