@@ -44,6 +44,7 @@ essentially and fills the template's data holes.
     - Shopping list ?
 ## Features/Extra
 - In main page or something, show a calendar of current month and upcoming dates.
+    - This would connect to google calendar api or account, if its api directly maybe make a table (more crud) for user api input?
 - One day when the server node program is fully implemented, see about syncing the DB there? (Concept project)
 - Refactor all duplicated functions such as Delete___ into generics. Something to think about
 since the notes file is getting very large
