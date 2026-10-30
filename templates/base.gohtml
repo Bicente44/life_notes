@@ -3,6 +3,7 @@
 <html>
 <head>
     <title>{{.Title}} - life_notes</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <link href="https://fonts.googleapis.com/css2?family=Roboto+Slab:wght@300;400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/app.css">
 </head>
@@ -11,7 +12,6 @@
         
         <!-- Left dropbar -->
         <div class="sidebar">
-            <button class="nav-toggle" aria-expanded="true">=</button>
             <nav class="nav-list">
                 <a href="/" class="nav-link {{if eq "Home" $.Title}}is-active{{end}}">Home</a>
                 {{range .NavItems}}
@@ -22,11 +22,15 @@
 
         <!-- Right main content -->
         <div class="main-content">
-        <nav><a href="/">life_notes</a></nav>
-        <main>{{template "content" .}}</main>
+            <nav class="topbar">
+                <button class="nav-toggle" aria-expanded="true">=</button>
+                <a href="/">life_notes</a>
+            </nav>
+            <main>{{template "content" .}}</main>
         </div>
 
     </div>
+    <script src="/static/app.js"></script>
 </body>
 </html>
 {{end}}

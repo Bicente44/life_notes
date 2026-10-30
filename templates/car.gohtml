@@ -1,25 +1,52 @@
 {{define "content"}}
 <h1>{{.Car.Year}} {{.Car.Make}} {{.Car.Model}}</h1>
 
-<section>
-  <h2>Details</h2>
-  <dl>
-    <dt>Trim</dt><dd>{{.Car.Trim}}</dd>
-    <dt>Color</dt><dd>{{.Car.Color}}</dd>
-    <dt>VIN</dt><dd>{{.Car.Vin}}</dd>
-    <dt>Plate</dt><dd>{{.Car.LicensePlate}}</dd>
-    <dt>Oil type</dt><dd>{{.Car.OilType}}</dd>
-    <dt>Oil capacity</dt><dd>{{.Car.OilCapacityL}} L</dd>
-    <dt>Insurance</dt><dd>{{.Car.InsuranceProvider}} ({{.Car.InsurancePolicyNumber}})</dd>
-    <dt>Insurance expires</dt><dd>{{.Car.InsuranceExp}}</dd>
-    <dt>Registration expires</dt><dd>{{.Car.RegistrationExp}}</dd>
-    <dt>Notes</dt><dd>{{.Car.Notes}}</dd>
-  </dl>
-</section>
+<h2>Details</h2>
+<dl class="specs">
+    <div class="spec">
+        <dt>Trim</dt>
+        <dd>{{.Car.Trim}}</dd>
+    </div>
+    <div class="spec">
+        <dt>Color</dt>
+        <dd>{{.Car.Color}}</dd>
+    </div>
+    <div class="spec">
+        <dt>VIN</dt>
+        <dd>{{.Car.Vin}}</dd>
+    </div>
+    <div class="spec">
+        <dt>Plate</dt>
+        <dd>{{.Car.LicensePlate}}</dd>
+    </div>
+    <div class="spec">
+        <dt>Oil type</dt>
+        <dd>{{.Car.OilType}}</dd>
+    </div>
+    <div class="spec">
+        <dt>Oil capacity</dt>
+        <dd>{{.Car.OilCapacityL}} L</dd>
+    </div>
+    <div class="spec">
+        <dt>Insurance</dt>
+        <dd>{{.Car.InsuranceProvider}} ({{.Car.InsurancePolicyNumber}})</dd>
+    </div>
+    <div class="spec">
+        <dt>Insurance expires</dt>
+        <dd>{{.Car.InsuranceExp}}</dd>
+    </div>
+    <div class="spec">
+        <dt>Registration expires</dt>
+        <dd>{{.Car.RegistrationExp}}</dd>
+    </div>
+</dl>
+    <div class="spec">
+        <dt>Notes</dt>
+        <dd>{{.Car.Notes}}</dd>
+    </div>
 
-<section>
-  <h2>Edit</h2>
-  <form action="/car" method="post">
+<h2>Edit</h2>
+<form action="/car" method="post">
     <input type="hidden" name="id" value="{{.Car.ID}}">
 
     <label>Make <input name="make" value="{{.Car.Make}}"></label>
@@ -45,6 +72,5 @@
     <label>Notes <textarea name="notes">{{.Car.Notes}}</textarea></label>
 
     <button type="submit">Save</button>
-  </form>
-</section>
+</form>
 {{end}}
